@@ -1,0 +1,10 @@
+[{
+  "modid": "eventcommand",
+  "name": "Event Command",
+  "description": "React to events using commands",
+  "version": "1.0",
+  "url": "",
+  "authorList": [ "DosMike" ],
+  "requiredMods": [ "spongeapi@7.0.0" ],
+  "dependencies": [ "spongeapi@7.0.0" ]
+}]
