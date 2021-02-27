@@ -8,6 +8,7 @@ import org.spongepowered.api.data.value.ValueContainer;
 import org.spongepowered.api.event.Event;
 
 import java.lang.reflect.Array;
+import java.lang.reflect.Field;
 import java.lang.reflect.Method;
 import java.lang.reflect.Modifier;
 import java.util.Arrays;
@@ -20,21 +21,49 @@ public abstract class Mapper {
     String key;
     abstract Optional<?> map(Optional<?> in);
 
-    static class Getter extends Mapper {
-        public Getter(String method) {
-            key = method;
-        }
-        Optional<?> map(Optional<?> in) {
-            try {
-                Method m = in.get().getClass().getMethod(key);
-                m.setAccessible(true);
-                if ((m.getModifiers() & Modifier.STATIC) == Modifier.STATIC)
-                    throw new IllegalAccessException("Static methods are not supported in the chain");
-                if (m.getReturnType().equals(Void.TYPE))
-                    throw new IllegalAccessException("Methods in the chain need to return values");
-                return Utils.makeOptional(m.invoke(in.get()));
-            } catch (Exception e) {
-                throw new RuntimeException("Error in 'with'-chain at \""+toString()+"\": Invalid method or input", e);
+	static class Getter extends Mapper {
+		public Getter(String method) {
+			key = method;
+		}
+
+		private boolean hasMethod(Class<?> clz, String name) {
+			try {
+				clz.getMethod(name);
+				return true;
+			} catch (NoSuchMethodException e) {
+				return false;
+			}
+		}
+
+		private boolean hasField(Class<?> clz, String name) {
+			try {
+				clz.getField(name);
+				return true;
+			} catch (NoSuchFieldException e) {
+				return false;
+			}
+		}
+
+		Optional<?> map(Optional<?> in) {
+			try {
+				if (hasMethod(in.get().getClass(), key)) {
+					Method m = in.get().getClass().getMethod(key);
+					m.setAccessible(true);
+					if ((m.getModifiers() & Modifier.STATIC) == Modifier.STATIC)
+						throw new IllegalAccessException("Static methods are not supported in the chain");
+					if (m.getReturnType().equals(Void.TYPE))
+						throw new IllegalAccessException("Methods in the chain need to return values");
+					return Utils.makeOptional(m.invoke(in.get()));
+				} else if (hasField(in.get().getClass(), key)) {
+					Field f = in.get().getClass().getField(key);
+					f.setAccessible(true);
+					if ((f.getModifiers() & Modifier.STATIC) == Modifier.STATIC)
+						throw new IllegalAccessException("Static fields are not supported in the chain");
+					return Utils.makeOptional(f.get(in.get()));
+				} else
+					throw new RuntimeException("Error in 'with'-chain at \"" + toString() + "\": That's not a member for the given input");
+			} catch (Exception e) {
+				throw new RuntimeException("Error in 'with'-chain at \"" + toString() + "\": Invalid member or input", e);
             }
         }
 

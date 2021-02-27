@@ -11,20 +11,27 @@ public class WithChain {
 
     public WithChain(String lineDef) {
         String[] tokens = lineDef.split(" ");
-        if (tokens.length >= 4 && tokens[0].equalsIgnoreCase("with") && tokens[2].equalsIgnoreCase("as")) {
-            name = tokens[1].toLowerCase();
-            for (int i = 3; i < tokens.length; i++) {
-                mappers.add(Mapper.fromString(tokens[i]));
-            }
-        } else {
-            throw new IllegalArgumentException("'with'-chain definition is invalid!");
-        }
+	    if (tokens.length >= 4 && tokens[0].equalsIgnoreCase("with") && tokens[2].equalsIgnoreCase("as")) {
+		    name = tokens[1].toLowerCase();
+		    for (int i = 3; i < tokens.length; i++) {
+			    mappers.add(Mapper.fromString(tokens[i]));
+		    }
+	    } else {
+		    throw new IllegalArgumentException("'with'-chain definition is invalid!");
+	    }
     }
 
-    String resolve(Object input) {
-        Optional<?> value = Optional.of(input);
-        for (Mapper m : mappers) value = m.map(value);
-        return value.map(Utils::toString).orElseThrow(()->new RuntimeException("Could not resolve 'with'-chain"));
-    }
+	/**
+	 * @return String or primitive that can be converted to string by java
+	 */
+	Object resolve(Object input) {
+		Optional<?> value = Optional.of(input);
+		for (Mapper m : mappers) value = m.map(value);
+		return value.map(v -> {
+			if (v instanceof Number)
+				return v;
+			return v.toString();
+		}).orElseThrow(() -> new RuntimeException("Could not resolve 'with'-chain"));
+	}
 
 }

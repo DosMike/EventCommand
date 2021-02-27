@@ -10,9 +10,7 @@ import org.spongepowered.api.event.game.state.GameInitializationEvent;
 import org.spongepowered.api.event.game.state.GamePreInitializationEvent;
 import org.spongepowered.api.plugin.Plugin;
 
-import java.io.BufferedReader;
 import java.io.IOException;
-import java.io.InputStreamReader;
 import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
 import java.nio.file.Path;
@@ -22,7 +20,7 @@ import java.util.Arrays;
 import java.util.List;
 import java.util.stream.Collectors;
 
-@Plugin(id = "eventcommand", name = "Event Command", version = "1.0")
+@Plugin(id = "eventcommand", name = "Event Command", version = "1.1")
 public class EventCommand {
 
     private static EventCommand instance;
@@ -57,7 +55,7 @@ public class EventCommand {
     @ConfigDir(sharedRoot = false)
     private Path privateConfigDir;
 
-    List<Trigger> triggerList = new ArrayList<>();
+    List<Trigger<?>> triggerList = new ArrayList<>();
 
     public static void simplePrint(Throwable x) {
         String padding="";
@@ -84,75 +82,12 @@ public class EventCommand {
         }
     }
     void loadFile(Path path) throws IOException {
-        int lineNo=0;
-        BufferedReader br = null;
-        try {
-            br = new BufferedReader(new InputStreamReader( Files.newInputStream(path) ));
-            String line;
-            String className = null;
-            List<WithChain> variables = new ArrayList<>();
-            List<Action> actions = new ArrayList<>();
-            // 0: expect event name
-            // 1: expect with-chains or (switch) first action
-            // 2: expect actions or (switch) event name
-            int state=0;
-
-            while ((line=br.readLine())!=null) { lineNo++;
-                line = line.trim();
-                if (line.startsWith("--") || line.isEmpty()) continue; //comments
-                else if (line.startsWith("@")) {
-                    if (state == 1) throw new IllegalStateException("Expected 'with'-chains or actions at line "+lineNo);
-                    else if (className!=null) {
-                        try {
-                            triggerList.add(new Trigger(className, variables, actions));
-                        } catch (Exception e) {
-                            throw new IOException("Unable to create trigger \""+className+"\" before line "+lineNo, e);
-                        }
-                        variables.clear();
-                        actions.clear();
-                    }
-                    className = line.substring(1).trim();
-                    state = 1;
-                } else if (line.toLowerCase().startsWith("with")) {
-                    if (state == 0) throw new IllegalStateException("Expected event name at line "+lineNo);
-                    else if (state == 2) throw new IllegalStateException("Expected action or event name at line "+lineNo);
-                    try {
-                        variables.add(new WithChain(line));
-                    } catch (Exception e) {
-                        throw new IOException("Unable to parse 'with'-chain at line "+lineNo, e);
-                    }
-                } else {
-                    if (state == 0) throw new IllegalStateException("Expected event name at line "+lineNo);
-                    try {
-                        if (line.startsWith("!")) {
-                            actions.add(new Action.ServerCommand(line.substring(1).trim()));
-                        } else {
-                            actions.add(new Action.PlayerCommand(line));
-                        }
-                    } catch (Exception e) {
-                        throw new IOException("Unable to parse commands at line "+lineNo, e);
-                    }
-                    state = 2;
-                }
-            }
-            if (className != null) {
-                if (state < 2) throw new IllegalStateException("Unexpected end of file, actions expected");
-                try {
-                    triggerList.add(new Trigger(className, variables, actions));
-                } catch (Exception e) {
-                    throw new IOException("Unable to create trigger \"" + className + "\" before line " + lineNo, e);
-                }
-            }
-
-        } catch (Exception e) {
-            throw new IOException("Unable to load file \""+path.toString()+"\"", e);
-        } finally {
-            try { br.close(); } catch (Exception ignore) {}
-        }
+	    triggerList.addAll(new ECParser(path).load().getTriggers());
     }
     void unload() {
-        Sponge.getEventManager().unregisterPluginListeners(instance);
-        triggerList.clear();
+	    Sponge.getEventManager().unregisterPluginListeners(instance);
+	    triggerList.forEach(Trigger::unregister);
+	    triggerList.clear();
     }
 
     void writeExample() throws IOException {
