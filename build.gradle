@@ -1,8 +1,15 @@
+import com.github.jengelman.gradle.plugins.shadow.tasks.ShadowJar
+import de.dosmike.sponge.pluginpublisher.gradle.NotifyDiscordBotTask
+import de.dosmike.sponge.pluginpublisher.gradle.PublishToGitTask
+import de.dosmike.sponge.pluginpublisher.gradle.PublishToOreTask
+import de.dosmike.sponge.pluginpublisher.tasks.TaskFunctors
+
 plugins {
     id 'java'
     id 'maven'
     id 'org.spongepowered.plugin' version '0.9.0'
     id 'com.github.johnrengelman.shadow' version '5.1.0'
+    id 'com.github.dosmike.PluginPublisher' version '1.2.3'
 }
 
 group = 'com.github.dosmike'
@@ -32,22 +39,15 @@ targetCompatibility = 1.8
 
 repositories {
     mavenCentral()
-    jcenter()
     maven { url "https://jitpack.io" }
 }
-configurations {
-    //don't get dependencies of these dependencies, would bloat uber jar
-    shadow.transitive false
-}
-
 
 
 dependencies {
     compileOnly 'org.jetbrains:annotations:16.0.2'
-    compileOnly 'org.spongepowered:spongeapi:7.2.0-SNAPSHOT'
-    shadow 'com.github.DosMike:SpongePluginVersionChecker:master-SNAPSHOT'
+    compileOnly 'org.spongepowered:spongeapi:7.3.0-SNAPSHOT'
+    compileOnly 'net.luckperms:api:5.2'
 }
-
 
 
 task removeOldVersions() {
@@ -62,8 +62,6 @@ task removeOldVersions() {
                     it.file.name != baseArtifactName
         }
 }
-import com.github.jengelman.gradle.plugins.shadow.tasks.ShadowJar
-import org.gradle.api.tasks.Exec
 
 task uberJar(type:ShadowJar, group:'_Plugin', dependsOn:removeOldVersions) {
     duplicatesStrategy = DuplicatesStrategy.EXCLUDE
@@ -73,13 +71,6 @@ task uberJar(type:ShadowJar, group:'_Plugin', dependsOn:removeOldVersions) {
                 'Implementation-Version': project.version)
     }
     configurations = [project.configurations.shadow]
-    //relocate the version checker to avoid problems with different versions of versionChecker in different plugins
-    //conveniently the plugin id supports a limited character set that can be used as package name
-    relocate('de.dosmike.sponge', 'shadow.dosmike.versionchecker.'+pluginid) {
-        //don't relocate my actual plugins - yes, includes are paths!
-        include "de/dosmike/sponge/VersionChecker"
-        include "de/dosmike/sponge/VersionChecker\$Version"
-    }
     from(sourceSets.main.resources)
     from(sourceSets.main.output)
     classifier = null
@@ -103,47 +94,56 @@ task rebuild(group:'_Plugin') {
     mustRunAfter clean
     finalizedBy uberJar
 }
-task zPublish(type: Exec, group:'_Plugin', dependsOn:uberJar) {
+
+task z_Publish(group:'_Plugin', dependsOn:uberJar) {
     def keyfile = file('..\\PluginPublisher\\.apikeys')
-    if (keyfile.exists()) {
-        keyfile.readLines().each() {
-            def (key, value) = it.tokenize('=')
-            environment key, value
+    onlyIf { keyfile.exists() }
+    outputs.upToDateWhen {false}
+    def props, versionDesc
+    doFirst {
+        props = new Properties()
+        file('..\\PluginPublisher\\.apikeys').withInputStream {
+            props.load(it)
         }
-        def spp_git_slug = 'DosMike/TooMuchStock'
-        def spp_discord_server = '342942444288999435'
-        def spp_discord_channel = '618485610990272520'
-        def spp_discord_mention = '<@&644227606048145467>'
-        def spp_discord_header = "${spp_discord_mention} Version ${version} released on Ore and GitHub"
-        def outputFile = "build\\libs\\${jar.archiveName}"
-        commandLine 'java', '-jar', '..\\PluginPublisher\\PluginPublisher.jar',
-                '--gk', 'gitkey', /*'--ok', 'orekey',*/ '--dk', 'discordkey',
-                '--gs', spp_git_slug, '--gt', version, '--gn', "Development Build ${version}", '--ga', outputFile,
-                /*'--op', pluginid, '--oa', outputFile,*/
-                '--ds', spp_discord_server, '--dc', spp_discord_channel, '--dh', spp_discord_header
+        //show an input prompt
+        versionDesc = TaskFunctors.validateReleaseDescription(null, false)
+    }
+    doLast {
+        project.zPub_Git.apiKey.set    ( props.getProperty('gitkey') )
+        project.zPub_Ore.apiKey.set    ( props.getProperty('orekey') )
+        project.zPub_Discord.apiKey.set( props.getProperty('discordkey') )
+
+        project.zPub_Git.messageBody.set    ( versionDesc )
+        project.zPub_Ore.messageBody.set    ( versionDesc )
+        project.zPub_Discord.messageBody.set( versionDesc )
     }
 }
+task zPub_Git(type: PublishToGitTask, group:'_Plugin', dependsOn: z_Publish) {
+    gitSlug.set     ( 'DosMike/EventCommand' )
+    versionTag.set  ( project.version.toString() )
+    versionName.set ( "Release Build ${project.version}" )
+    uploadAssets.set( jar.outputs.files )
+}
+task zPub_Ore(type: PublishToOreTask, group:'_Plugin', dependsOn: z_Publish) {
+    projectId.set  ( pluginid.toString() )
+    channel.set    ( 'Release' )
+    uploadAsset.set( jar.outputs.files )
+}
+task zPub_Discord(type: NotifyDiscordBotTask, group:'_Plugin', dependsOn: z_Publish) {
+    guildId.set      ( '342942444288999435' )
+    channelId.set    ( '773123574907011073' )
+    messageHeader.set( "<@&729652491506941992> Version ${version} released on Ore and GitHub" )
+    finalizedBy(TerminateDiscordBot)
+}
+z_Publish.finalizedBy(zPub_Git)
+zPub_Git.finalizedBy(zPub_Ore)
+zPub_Ore.finalizedBy(zPub_Discord)
 
 //for generating the jar
 jar {
     manifest {
         attributes('Implementation-Title': project.name,
                 'Implementation-Version': project.version)
-    }
-}
-
-//i tried the singing plugin but the config described on the gradle page did not work
-//so here's the easy way of signing a plugin without having to get the keyId
-task signing(type:Exec, group:'_Plugin', dependsOn:uberJar) {
-    if (new File(gnupgDir).exists()) {
-        workingDir file(gnupgDir)
-        commandLine 'cmd', '/c', 'gpg2', '--output', "${baseArtifactFile}.sig", '--detach-sig', baseArtifactFile
-        //store the output instead of printing to the console:
-        standardOutput = new ByteArrayOutputStream()
-        //extension method stopTomcat.output() can be used to obtain the output:
-        ext.output = {
-            return standardOutput.toString()
-        }
     }
 }
 
@@ -180,6 +180,6 @@ install {
 }
 
 wrapper {
-    gradleVersion = "5.2.1"
+    gradleVersion = "5.6.4"
     distributionType = Wrapper.DistributionType.ALL
 }
