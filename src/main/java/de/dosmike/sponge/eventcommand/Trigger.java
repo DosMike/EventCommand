@@ -1,22 +1,21 @@
 package de.dosmike.sponge.eventcommand;
 
-import java.util.ArrayList;
-import java.util.HashMap;
-import java.util.List;
-import java.util.Map;
+import java.util.*;
 
 public abstract class Trigger<EventType> {
 
     protected Class<? extends EventType> eventClass;
     protected Map<String, WithChain> variables = new HashMap<>();
+    protected List<Computing> maths;
     protected ActionGroup actions;
 
-    protected Trigger(Class<? extends EventType> clazz, List<WithChain> variables, ActionGroup actions) {
+    protected Trigger(Class<? extends EventType> clazz, List<WithChain> variables, List<Computing> maths, ActionGroup actions) {
         this.eventClass = clazz;
         register(eventClass);
         for (WithChain with : variables) {
             this.variables.put(with.name.toLowerCase(), with);
         }
+        this.maths = maths;
         this.actions = actions;
     }
 
@@ -35,6 +34,9 @@ public abstract class Trigger<EventType> {
                 Object v = e.getValue().resolve(event);
                 values.put(k, v);
                 EventCommand.l("(%d) Resolved %s to %s", hc, k, v);
+            }
+            for (Computing m : maths) {
+                m.mutateState(values);
             }
             actions.run(event, values);
         } catch (Exception e) {

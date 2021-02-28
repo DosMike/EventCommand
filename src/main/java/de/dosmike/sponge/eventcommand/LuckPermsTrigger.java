@@ -10,10 +10,10 @@ public class LuckPermsTrigger extends Trigger<LuckPermsEvent> {
 
     EventSubscription<? extends LuckPermsEvent> subscription;
 
-    public LuckPermsTrigger(String classname, List<WithChain> variables, ActionGroup actions) {
+    public LuckPermsTrigger(String classname, List<WithChain> variables, List<Computing> maths, ActionGroup actions) {
         super(Utils.tryLoad(classname, LuckPermsEvent.class)
                         .orElseThrow(() -> new RuntimeException("Could not find event (include package): " + classname))
-                , variables, actions);
+                , variables, maths, actions);
     }
 
     @Override

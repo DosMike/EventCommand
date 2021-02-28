@@ -25,6 +25,7 @@ public class ECParser {
 
 	List<Trigger<?>> parsed = new LinkedList<>();
 	List<WithChain> variables = new ArrayList<>();
+	List<Computing> quickMaths = new ArrayList<>();
 	ActionGroup actions = null;
 	int lineNo = 0;
 	Path path;
@@ -62,6 +63,10 @@ public class ECParser {
 					}
 					case WITH_CHAIN: {
 						parseWithChain(line);
+						break;
+					}
+					case MATHS: {
+						parseMaths(line);
 						break;
 					}
 					case FILTER: {
@@ -157,6 +162,11 @@ public class ECParser {
 		lastParsed = LineType.WITH_CHAIN;
 	}
 
+	private void parseMaths(String line) {
+		quickMaths.add(new Computing(line));
+		lastParsed = LineType.MATHS;
+	}
+
 	private void parseFilter(String line, int indent) throws IOException {
 		setActionGroup(indent);
 		Filtered f = new Filtered(line);
@@ -195,7 +205,7 @@ public class ECParser {
 				throw new IllegalStateException("Trigger \"" + nextTrigger + "\" does not specify any actions before line " + lineNo);
 			}
 			try {
-				parsed.add(TriggerFactory.get().create(nextTrigger, variables, actions.getRoot()));
+				parsed.add(TriggerFactory.get().create(nextTrigger, variables, quickMaths, actions.getRoot()));
 			} catch (Exception e) {
 				throw new IOException("Unable to create trigger \"" + nextTrigger + "\" before line " + lineNo, e);
 			}
