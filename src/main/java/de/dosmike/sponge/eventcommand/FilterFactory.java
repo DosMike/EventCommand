@@ -314,15 +314,33 @@ public class FilterFactory {
 			if (rule.charAt(off) == '"') { //collect string
 				q = off;
 				while (true) {
-					q = rule.indexOf('"', q + 1);
+					q = Utils.firstIndexOf(rule, "\\\"", q + 1);
 					if (q==-1) throw new IOException("Unterminated String!"); //should not happen here
-					if (q==0 || rule.charAt(q-1)!='\\') {//check escaped quotes
+					if (rule.charAt(q)=='\\') {
+						if (q+1 == rule.length()) throw new IOException("Unterminated String!"); //escape at eol?
+						char escaped = rule.charAt(q+1);
+						if (escaped != 'n' && escaped != 't' && escaped != '\\' && escaped != '"') throw new IOException("Invalid escape: \\n \\t \\\\ and \\\" are supported");
+						q++;//skip escaped char
+					} else {
 						String token = rule.substring(off+1, q-1);
+						StringBuilder unescaped = new StringBuilder(token.length());
 						off = q+1;
-						token = token.replace("\\\"", "\"")
-								.replace("\\n", "\n")
-								.replace("\\t", "\t");
-						tokens.add(new Token(token, Type.STRING));
+						int lastIndex = q = 0;
+						while ((q=token.indexOf('\\',q))>=0) {
+							char rep;
+							switch (token.charAt(q+1)) {
+								case 'n': rep = '\n'; break;
+								case 't': rep = '\t'; break;
+								case '\\': rep = '\\'; break;
+								case '"': rep = '"'; break;
+								default: throw new RuntimeException("Failsafe: unsupported escape");
+							}
+							unescaped.append(token, 0, q).append(rep);
+							q+=2;
+							lastIndex = q;
+						}
+						if (lastIndex < token.length()) unescaped.append(token.substring(lastIndex));
+						tokens.add(new Token(unescaped.toString(), Type.STRING));
 					}
 				}
 			} else if (rule.charAt(off)>='0' && rule.charAt(off)<='9' ||

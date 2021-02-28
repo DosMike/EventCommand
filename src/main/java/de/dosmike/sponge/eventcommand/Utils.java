@@ -109,4 +109,18 @@ public class Utils {
         else throw new IllegalArgumentException("Cannot convert object to double numeric");
     }
 
+    public static int firstIndexOf(String haystack, String needles, int offset) {
+        char[] nx = needles.toCharArray();
+        int min = Integer.MAX_VALUE;
+        boolean found = false;
+        for (char c : nx) {
+            int at = haystack.indexOf(c, offset);
+            if (at>=0) {
+                found = true;
+                if (at < min) min = at;
+            }
+        }
+        return found ? min : -1;
+    }
+
 }

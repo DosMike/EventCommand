@@ -17,7 +17,7 @@ public class Computing {
 		if (!line.toLowerCase(Locale.ROOT).startsWith("let "))
 			throw new IllegalArgumentException("Expected 'let' for mathematics");
 		line = line.substring(4).trim();
-		int idx = first(line, " :=");
+		int idx = Utils.firstIndexOf(line, " :=",0);
 		if (idx == 0) throw new IllegalArgumentException("Expected variable in mathematics, found assignment operator");
 		if (idx < 0) throw new IllegalArgumentException("Unexpected end of line, expected assignment operator");
 
@@ -39,20 +39,6 @@ public class Computing {
 			mathExpr = line.substring(1).trim();
 		}
 
-	}
-
-	private int first(String haystack, String needles) {
-		char[] nx = needles.toCharArray();
-		int min = Integer.MAX_VALUE;
-		boolean found = false;
-		for (char c : nx) {
-			int at = haystack.indexOf(c);
-			if (at>=0) {
-				found = true;
-				if (at < min) min = at;
-			}
-		}
-		return found ? min : -1;
 	}
 
 	void mutateState(Map<String,Object> variables) {
