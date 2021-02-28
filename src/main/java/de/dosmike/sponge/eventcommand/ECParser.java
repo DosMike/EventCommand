@@ -9,6 +9,8 @@ import java.util.ArrayList;
 import java.util.LinkedList;
 import java.util.List;
 import java.util.Locale;
+import java.util.function.Predicate;
+import java.util.regex.Pattern;
 
 public class ECParser {
 
@@ -16,6 +18,7 @@ public class ECParser {
 		INVALID,
 		TRIGGER,
 		WITH_CHAIN,
+		FILTER,
 		ACTION
 	}
 
@@ -51,8 +54,13 @@ public class ECParser {
 						parseWithChain(line);
 						break;
 					}
+					case FILTER: {
+						//parseFilter(line);
+						break;
+					}
 					case ACTION: {
 						parseAction(line);
+						break;
 					}
 				}
 			}
@@ -73,12 +81,16 @@ public class ECParser {
 		return parsed;
 	}
 
+	private static final Predicate<String> checkPatternWith = Pattern.compile("^with\\b").asPredicate();
+	private static final Predicate<String> checkPatternFor = Pattern.compile("^(?:for|otherwise)\\b").asPredicate();
 	private LineType guessType(String line) {
 		LineType type;
 		if (line.charAt(0) == '@') {
 			type = LineType.TRIGGER;
-		} else if (line.toLowerCase(Locale.ROOT).startsWith("with")) {
+		} else if (checkPatternWith.test(line.toLowerCase(Locale.ROOT))) {
 			type = LineType.WITH_CHAIN;
+		} else if (checkPatternFor.test(line.toLowerCase(Locale.ROOT))) {
+			type = LineType.FILTER;
 		} else {
 			type = LineType.ACTION;
 		}

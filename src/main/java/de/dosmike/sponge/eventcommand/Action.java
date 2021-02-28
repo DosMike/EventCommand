@@ -28,13 +28,11 @@ public class Action {
             sb.append(command.substring(lastEnd));
         command = sb.toString();
     }
+    protected Action() {
+    }
 
     void run(Object context, Map<String, Object> variables) {
-        String action = command;
-        for (Map.Entry<String, Object> e : variables.entrySet()) {
-            action = action.replace("${" + e.getKey() + "}", e.getValue().toString());
-        }
-        Sponge.getCommandManager().process(resolver.get(context), action);
+        Sponge.getCommandManager().process(resolver.get(context), Utils.resolveVariables(command, variables));
     }
 
 }

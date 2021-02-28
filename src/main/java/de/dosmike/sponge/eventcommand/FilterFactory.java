@@ -1,0 +1,367 @@
+package de.dosmike.sponge.eventcommand;
+
+import org.spongepowered.api.Sponge;
+
+import java.io.IOException;
+import java.util.*;
+import java.util.function.BiPredicate;
+import java.util.regex.Matcher;
+import java.util.regex.Pattern;
+
+public class FilterFactory {
+
+	static class PlayerCooldown implements Filter {
+		long duration;
+		String variable;
+		PlayerCooldown(String playerVariable, String duration) {
+			this.variable = playerVariable;
+			this.duration = parseDuration(duration);
+		}
+		@Override
+		public boolean test(Map<String, Object> variables, Filtered ruleSet) {
+			Object vvalue = variables.get(variable);
+			if (vvalue == null) throw new NullPointerException("The Variable \""+variable+"\" did not contain a value");
+			UUID player = Utils.toPlayerUUID(variables.get(variable));
+			if (player == null) throw new NoSuchElementException("Could not find a player from the value \""+variables.get(variable).toString()+"\" of variable \""+variable+"\"");
+
+			//clean up cooldowns
+			long now = System.currentTimeMillis()/1000L;
+			List<UUID> expired = new LinkedList<>();
+			for (Map.Entry<UUID,Long> e : ruleSet.clientCD.entrySet()) {
+				if (e.getValue()+duration >= now) expired.add(e.getKey());
+			}
+			expired.forEach(uuid->ruleSet.clientCD.remove(uuid));
+
+			//putIfAbsent returns the current value. if there is no current value (==null) there is no cooldown and the test passes
+			//if the player is already on cooldown the value will not be replaced.
+			return ruleSet.clientCD.putIfAbsent(player, now) == null;
+		}
+	}
+	static class GlobalCooldown implements Filter {
+		long duration;
+		GlobalCooldown(String duration) {
+			this.duration = parseDuration(duration);
+		}
+		@Override
+		public boolean test(Map<String, Object> variables, Filtered ruleSet) {
+			long now = System.currentTimeMillis()/1000L;
+			if (ruleSet.globalCD+duration < now) return false;
+			ruleSet.globalCD = now;
+			return true;
+		}
+	}
+	static class PlayerPermission implements Filter {
+		String permission;
+		String variable;
+		PlayerPermission(String playerVariable, String permission) {
+			this.variable = playerVariable;
+			this.permission = permission;
+		}
+		@Override
+		public boolean test(Map<String, Object> variables, Filtered ruleSet) {
+			Object vvalue = variables.get(variable);
+			if (vvalue == null) throw new NullPointerException("The Variable \""+variable+"\" did not contain a value");
+			UUID player = Utils.toPlayerUUID(variables.get(variable));
+			if (player == null) throw new NoSuchElementException("Could not find a player from the value \""+variables.get(variable).toString()+"\" of variable \""+variable+"\"");
+
+			return Sponge.getServer().getPlayer(player).orElseThrow(()->new IllegalStateException("Player for UUID \""+player.toString()+"\" seems to be currently offline")).hasPermission(permission);
+		}
+	}
+	static class NumericCondition implements Filter {
+		Double leftAsNumber, rightAsNumber;
+		Token leftToken, rightToken;
+		BiPredicate<Double,Double> comp;
+		NumericCondition(Token left, String comparator, Token right) {
+			if (left.type != Type.NUMERIC && left.type != Type.VARIABLE)
+				throw new IllegalArgumentException("Numeric conditions left hand was not a number or variable");
+			if (right.type != Type.NUMERIC && right.type != Type.VARIABLE)
+				throw new IllegalArgumentException("Numeric conditions right hand was not a number or variable");
+			if (left.type == Type.NUMERIC && right.type == Type.NUMERIC)
+				throw new IllegalArgumentException("Numeric conditions is constant. Please resolve manually!");
+			this.leftAsNumber = left.type == Type.NUMERIC ? Double.parseDouble(left.srep) : null;
+			this.rightAsNumber = right.type == Type.NUMERIC ? Double.parseDouble(right.srep) : null;
+
+			this.comp = getComparator(comparator);
+		}
+		@Override
+		public boolean test(Map<String, Object> variables, Filtered ruleSet) {
+			Double left, right;
+			left = leftToken.type == Type.NUMERIC ? leftAsNumber : Utils.toDouble(variables.get(leftToken.srep));
+			right = rightToken.type == Type.NUMERIC ? rightAsNumber : Utils.toDouble(variables.get(rightToken.srep));
+			return comp.test(left,right);
+		}
+		static BiPredicate<Double,Double> getComparator(String fromSymbol) {
+			switch (fromSymbol) {
+				case "=":
+				case "==":
+					return (a, b) -> a.compareTo(b) == 0;
+				case "<=":
+					return (a, b) -> a.compareTo(b) <= 0;
+				case ">=":
+					return (a, b) -> a.compareTo(b) >= 0;
+				case "!=":
+				case "<>": //vb style, i like it :P
+					return (a, b) -> a.compareTo(b) != 0;
+				case "<":
+					return (a, b) -> a.compareTo(b) < 0;
+				case ">":
+					return (a, b) -> a.compareTo(b) > 0;
+				default:
+					throw new IllegalArgumentException("Unknown numeric comparator");
+			}
+		}
+	}
+	static class StringCondition implements Filter {
+		Token leftToken, rightToken;
+		BiPredicate<String,String> comp;
+		StringCondition(Token left, String comparator, Token right) {
+			if (left.type != Type.STRING && left.type != Type.VARIABLE)
+				throw new IllegalArgumentException("Numeric conditions left hand was not a number or variable");
+			if (right.type != Type.STRING && right.type != Type.VARIABLE)
+				throw new IllegalArgumentException("Numeric conditions right hand was not a number or variable");
+			if (left.type == Type.STRING && right.type == Type.STRING)
+				throw new IllegalArgumentException("Numeric conditions is constant. Please resolve manually!");
+
+			this.comp = getComparator(comparator);
+		}
+		@Override
+		public boolean test(Map<String, Object> variables, Filtered ruleSet) {
+			String left, right;
+			left = leftToken.type == Type.STRING ? leftToken.srep : variables.get(leftToken.srep).toString();
+			right = rightToken.type == Type.STRING ? rightToken.srep : variables.get(rightToken.srep).toString();
+			return comp.test(left,right);
+		}
+		static BiPredicate<String,String> getComparator(String fromSymbol) {
+			switch (fromSymbol) {
+				case "=":
+				case "==":
+					return String::equalsIgnoreCase;
+				case "===":
+					return String::equals;
+				case "<=":
+					return (a, b) -> a.compareTo(b) <= 0;
+				case ">=":
+					return (a, b) -> a.compareTo(b) >= 0;
+				case "!=":
+				case "<>": //vb style, i like it :P
+					return (a, b) -> a.compareTo(b) != 0;
+				case "<":
+					return (a, b) -> a.compareTo(b) < 0;
+				case ">":
+					return (a, b) -> a.compareTo(b) > 0;
+				case "matches":
+					return String::matches;
+				default:
+					throw new IllegalArgumentException("Unknown string comparator");
+			}
+		}
+	}
+	static class VariableCondition implements Filter {
+		String leftVar, rightVar;
+		String cmp;
+		VariableCondition(String leftVar, String comparator, String rightVar) {
+			this.leftVar = leftVar;
+			this.rightVar = rightVar;
+			switch (comparator) {
+				case "=":
+				case "==":
+				case "===":
+				case "<=":
+				case ">=":
+				case "!=":
+				case "<>": //vb style, i like it :P
+				case "<":
+				case ">":
+				case "matches":
+					cmp = comparator;
+					break;
+				default:
+					throw new IllegalArgumentException("Unknown value comparator");
+			}
+		}
+		@Override
+		public boolean test(Map<String, Object> variables, Filtered ruleSet) {
+			Object left, right;
+			left = variables.get(leftVar);
+			right = variables.get(rightVar);
+			try {
+				Double lad = Utils.toDouble(left), rad = Utils.toDouble(right);
+				return NumericCondition.getComparator(cmp).test(lad,rad);
+			} catch (Exception e) {
+				return StringCondition.getComparator(cmp).test(left.toString(),right.toString());
+			}
+		}
+	}
+
+
+	public static Filter create(String rule) throws IOException {
+		List<Token> tokens = tokenize(rule);
+		try {
+			if (tokens.size() == 3) {
+				if (tokens.get(1).type == Type.KEYWORD && tokens.get(1).ciEquals("every") &&
+					tokens.get(2).type == Type.DURATION) {
+					if (tokens.get(0).type == Type.KEYWORD && tokens.get(0).ciEquals("global"))
+						return new GlobalCooldown(tokens.get(2).srep.toLowerCase(Locale.ROOT));
+					else if (tokens.get(0).type == Type.VARIABLE)
+						return new PlayerCooldown(tokens.get(0).srep.toLowerCase(Locale.ROOT), tokens.get(2).srep.toLowerCase(Locale.ROOT));
+					else
+						throw new IOException("Invalid cooldown condition. Subject needs to be 'global' or variable at \""+rule+"\"");
+				}
+				else if (tokens.get(1).type == Type.KEYWORD && tokens.get(1).ciEquals("hasPermission")) {
+					if (tokens.get(2).type != Type.STRING)
+						throw new IOException("Right side of hasPermission has to be a quoted string at \""+rule+"\"");
+					if (tokens.get(0).type != Type.VARIABLE)
+						throw new IOException("Left side of hasPermission has to be a player variable at \""+rule+"\"");
+					return new PlayerPermission(tokens.get(0).srep, tokens.get(2).srep);
+				}
+				else if ((tokens.get(1).type == Type.OTHER || (tokens.get(1).type == Type.KEYWORD &&tokens.get(1).ciEquals("matches") )) &&
+					(tokens.get(0).type == Type.STRING || tokens.get(0).type == Type.VARIABLE) &&
+					(tokens.get(2).type == Type.STRING || tokens.get(2).type == Type.VARIABLE)) {
+					if (tokens.get(0).type == Type.VARIABLE && tokens.get(1).type == Type.VARIABLE)
+						return new VariableCondition(tokens.get(0).srep, tokens.get(1).srep.toLowerCase(Locale.ROOT), tokens.get(2).srep);
+					else
+						return new StringCondition(tokens.get(0), tokens.get(1).srep.toLowerCase(Locale.ROOT), tokens.get(2));
+				}
+				else if (tokens.get(1).type == Type.OTHER &&
+					(tokens.get(0).type == Type.NUMERIC || tokens.get(0).type == Type.VARIABLE) &&
+					(tokens.get(2).type == Type.NUMERIC || tokens.get(2).type == Type.VARIABLE)) {
+					if (tokens.get(0).type == Type.VARIABLE && tokens.get(1).type == Type.VARIABLE)
+						//can this be reached?
+						return new VariableCondition(tokens.get(0).srep, tokens.get(1).srep.toLowerCase(Locale.ROOT), tokens.get(2).srep);
+					else
+						return new NumericCondition(tokens.get(0), tokens.get(1).srep, tokens.get(1));
+				}
+			}
+			throw new IOException("Unknown filter condition syntax for \""+rule+"\"");
+		} catch (RuntimeException e) {
+			throw new IOException("Failed to parse condition \""+rule+"\"", e);
+		}
+	}
+
+	/** @return seconds */
+	private static Long parseDuration(String duration) {
+		int i;
+		if ((i = duration.indexOf(':'))>=0) {
+			long val = 0;
+			int o=0;
+			List<Integer> parts = new LinkedList<>();
+			for (; i>=0; i=duration.indexOf(':', o)) {
+				parts.add(Integer.parseInt(duration.substring(o,i)));
+				o=i+1;
+			}
+			if (parts.size()<2 || parts.size()>3) throw new IllegalArgumentException("Invalid duration format");
+			if (parts.size() == 3) {
+				val = parts.remove(0) * 3600;
+			}
+			if (parts.get(0)>=60) throw new IllegalArgumentException("You can specify a max of 59 minutes in an hour");
+			if (parts.get(1)>=60) throw new IllegalArgumentException("You can specify a max of 59 seconds in a minute");
+			return val + parts.get(0) * 60 + parts.get(1);
+		} else {
+			long mul;
+			int sl=1;
+			if (duration.endsWith("min")) {
+				mul = 60L; sl = 3;
+			} else if (duration.endsWith("sec")) {
+				mul = 1L; sl = 3;
+			} else if (duration.endsWith("h")) {
+				mul = 3600L;
+			} else if (duration.endsWith("m")) {
+				mul = 60L;
+			} else if (duration.endsWith("s")) {
+				mul = 1L;
+			} else throw new IllegalArgumentException("Unknown duration suffix");
+			if (duration.length()<=sl) throw new IllegalArgumentException("Duration suffix without value");
+			duration = duration.substring(0,duration.length()-sl);
+			return Long.parseLong(duration) * mul;
+		}
+	}
+	private static class Token {
+		String srep;
+		Type type;
+		public Token(String srep, Type type) {
+			this.srep = srep;
+			this.type = type;
+		}
+
+		boolean ciEquals(String other) {
+			return srep.equalsIgnoreCase(other);
+		}
+
+		@Override
+		public String toString() {
+			return srep;
+		}
+	}
+	enum Type {
+		STRING, NUMERIC, VARIABLE, DURATION, KEYWORD, OTHER
+	}
+	private static final Pattern numericPattern = Pattern.compile("^([-]?[0-9]+(?:\\.[0-9]+)?(?:e[+-]?[0-9]+)?)");
+	private static final Pattern variablePattern = Pattern.compile("^\\$\\{(\\p{L}+)}");
+	private static final Pattern durationPattern = Pattern.compile("^[0-9]+(?:(?:h|m(?:in)?|s(?:ec)?)|(?::[0-9]{2}(?::[0-9]{2})?))");
+	private static final Pattern keywordPattern = Pattern.compile("^(\\p{L}+)(?:\\b|$)");
+	private static final Pattern symbolsPattern = Pattern.compile("^([^\\p{L}\\p{Digit}]+)");
+	static List<Token> tokenize(String rule) throws IOException {
+		int q,s,off=0;
+		List<Token> tokens = new LinkedList<>();
+		while (off < rule.length()) {
+			while (Character.isWhitespace(rule.charAt(off))) off++;
+			if (rule.charAt(off) == '"') { //collect string
+				q = off;
+				while (true) {
+					q = rule.indexOf('"', q + 1);
+					if (q==-1) throw new IOException("Unterminated String!"); //should not happen here
+					if (q==0 || rule.charAt(q-1)!='\\') {//check escaped quotes
+						String token = rule.substring(off+1, q-1);
+						off = q+1;
+						token = token.replace("\\\"", "\"")
+								.replace("\\n", "\n")
+								.replace("\\t", "\t");
+						tokens.add(new Token(token, Type.STRING));
+					}
+				}
+			} else if (rule.charAt(off)>='0' && rule.charAt(off)<='9' ||
+					(rule.charAt(off)=='-' && off+1<rule.length() && rule.charAt(off+1)>='0' && rule.charAt(off+1)<='9' ) ) { //collect number
+				s = rule.indexOf(' ', off); //peek next space
+				String poke = s==-1?rule.substring(off):rule.substring(off,s);
+				if (poke.indexOf(':')>0 || Character.isLetter(poke.charAt(poke.length()-1))) {
+					//probably a duration
+					Matcher m = durationPattern.matcher(rule.substring(off));
+					if (!m.find()) throw new NumberFormatException("Could not parse duration around char "+off+" in rule `"+rule+"`");
+					tokens.add(new Token(m.group(), Type.DURATION));
+					off += m.end();
+				} else {
+					//probably a numeric
+					Matcher m = numericPattern.matcher(rule.substring(off));
+					if (!m.find()) throw new NumberFormatException("Could not parse number around char "+off+" in rule `"+rule+"`");
+					tokens.add(new Token(m.group(), Type.NUMERIC));
+					off += m.end();
+				}
+			} else if (rule.charAt(off) == '$') {
+				Matcher m = variablePattern.matcher(rule.substring(off));
+				if (!m.find()) throw new NumberFormatException("Malformed variable indicator around char "+off+" in rule `"+rule+"`");
+				tokens.add(new Token(m.group(1), Type.VARIABLE));
+				off += m.end();
+			} else {
+				Matcher m = keywordPattern.matcher(rule.substring(off));
+				if (m.find()) {
+					tokens.add(new Token(m.group(), Type.KEYWORD));
+					off += m.end();
+					continue;
+				}
+				m = symbolsPattern.matcher(rule.substring(off));
+				if (m.find()) {
+					tokens.add(new Token(m.group(), Type.OTHER));
+					off += m.end();
+				}
+			}
+		}
+		return tokens;
+	}
+	int indexOfSpace(String string, int off) {
+		for (int i = off; i<string.length(); i++) {
+			if (Character.isWhitespace(string.charAt(i))) return i;
+		}
+		return -1;
+	}
+
+}
