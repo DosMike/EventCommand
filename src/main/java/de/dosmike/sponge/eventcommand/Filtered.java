@@ -8,11 +8,14 @@ public class Filtered extends ActionGroup {
 	List<Filter> filters = new LinkedList<>();
 	Map<UUID, Long> clientCD;
 	Long globalCD;
+	boolean lastCase;
 
 	public Filtered(String line) throws IOException {
 		super(-1);
 
-		if (line.toLowerCase(Locale.ROOT).equals("otherwise")) return; //no filters for the "else" case
+		if (lastCase = line.toLowerCase(Locale.ROOT).equals("otherwise")) { //no filters for the "else" case
+			return;
+		}
 		// skip the 'for'
 		// for every csv parse the condition, keep quoted strings in mind
 		line = line.substring(3).trim();
@@ -54,9 +57,4 @@ public class Filtered extends ActionGroup {
 		return true;
 	}
 
-	@Override
-	void run(Object context, Map<String, Object> variables) {
-		if (test(variables))
-			super.run(context, variables);
-	}
 }

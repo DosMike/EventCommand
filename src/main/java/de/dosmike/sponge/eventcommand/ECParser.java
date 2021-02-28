@@ -18,6 +18,7 @@ public class ECParser {
 		INVALID,
 		TRIGGER,
 		WITH_CHAIN,
+		MATHS,
 		FILTER,
 		ACTION
 	}
@@ -90,7 +91,8 @@ public class ECParser {
 		return parsed;
 	}
 
-	private static final Predicate<String> checkPatternWith = Pattern.compile("^with\\b").asPredicate();
+	private static final Predicate<String> checkPatternWith = Pattern.compile("^let\\b").asPredicate();
+	private static final Predicate<String> checkPatternMaths = Pattern.compile("^with\\b").asPredicate();
 	private static final Predicate<String> checkPatternFor = Pattern.compile("^(?:for|otherwise)\\b").asPredicate();
 	private LineType guessType(String line) {
 		LineType type;
@@ -98,21 +100,49 @@ public class ECParser {
 			type = LineType.TRIGGER;
 		} else if (checkPatternWith.test(line.toLowerCase(Locale.ROOT))) {
 			type = LineType.WITH_CHAIN;
+		} else if (checkPatternMaths.test(line.toLowerCase(Locale.ROOT))) {
+			type = LineType.MATHS;
 		} else if (checkPatternFor.test(line.toLowerCase(Locale.ROOT))) {
 			type = LineType.FILTER;
 		} else {
 			type = LineType.ACTION;
 		}
-		if (type == LineType.TRIGGER && lastParsed == LineType.TRIGGER) {
-			throw new IllegalStateException("Expected 'with'-chains or actions at line " + lineNo);
-		} else if (type == LineType.WITH_CHAIN) {
-			if (lastParsed == LineType.INVALID) {
-				throw new IllegalStateException("Expected event name at line " + lineNo);
-			} else if (lastParsed == LineType.ACTION || lastParsed == LineType.FILTER) { //actions can be repeated or followed by new triggers, we're in another with chain!
-				throw new IllegalStateException("Expected action, filter or event name at line " + lineNo);
-			}
-		} else if ((type == LineType.ACTION || type == LineType.FILTER) && lastParsed == LineType.INVALID) {
+		// 1 @event
+		// 2  with
+		// 3  math
+		// 4  filter/action
+		// legal progression
+		// 1->2,4
+		// 2->2,3,4
+		// 3->3,4
+		// 4->1,4
+		// legal predecessors
+		// 1<-4
+		// 2<-1,2
+		// 3<-2,3
+		// 4<-1,2,3,4
+		if (lastParsed == LineType.INVALID && type != LineType.TRIGGER) {
 			throw new IllegalStateException("Expected event name at line " + lineNo);
+		} else if (type == LineType.TRIGGER) {
+			if (lastParsed == LineType.TRIGGER) { // 1 <- 1 -> 2,4
+				throw new IllegalStateException("Empty Event. Expected 'with'-chains, filters or actions at line " + lineNo+", found event name");
+			} else if (lastParsed == LineType.WITH_CHAIN) { // 1 <- 2 -> 2,3,4
+				throw new IllegalStateException("No actions for event. Expected 'with'-chains, mathematics, filter or actions at line " + lineNo+", found event name");
+			} else if (lastParsed == LineType.MATHS) { // 1 <- 3 -> 3,4
+				throw new IllegalStateException("No actions for event. Expected mathematics, filter or actions at line " + lineNo+", found event name");
+			}
+		} else if (type == LineType.WITH_CHAIN) {
+			if (lastParsed == LineType.MATHS) { // 2 <- 3 -> 3,4
+				throw new IllegalStateException("'With'-chain after mathematics. Expected mathematics, filter or actions at line " + lineNo + ", found 'with'-chain");
+			} else if (lastParsed == LineType.ACTION || lastParsed == LineType.FILTER) { // 2 <- 4 -> 1,4
+				throw new IllegalStateException("'With'-chain after actions. Expected filter, actions or next event name at line " + lineNo + ", found 'with'-chain");
+			}
+		} else if (type == LineType.MATHS) {
+			if (lastParsed == LineType.TRIGGER) { // 3 <- 1 -> 2,4
+				throw new IllegalStateException("Mathematics before 'with'-chains. Expected 'with'-chain, filter or actions at line " + lineNo + ", found 'with'-chain");
+			} else if (lastParsed == LineType.ACTION || lastParsed == LineType.FILTER) { // 3 <- 4 -> 1,4
+				throw new IllegalStateException("Mathematics after actions. Expected filter, actions or next event name at line " + lineNo + ", found 'with'-chain");
+			}
 		}
 		return type;
 	}
@@ -165,7 +195,7 @@ public class ECParser {
 				throw new IllegalStateException("Trigger \"" + nextTrigger + "\" does not specify any actions before line " + lineNo);
 			}
 			try {
-				parsed.add(TriggerFactory.get().create(nextTrigger, variables, actions));
+				parsed.add(TriggerFactory.get().create(nextTrigger, variables, actions.getRoot()));
 			} catch (Exception e) {
 				throw new IOException("Unable to create trigger \"" + nextTrigger + "\" before line " + lineNo, e);
 			}

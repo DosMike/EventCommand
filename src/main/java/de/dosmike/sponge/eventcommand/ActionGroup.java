@@ -30,9 +30,27 @@ public class ActionGroup extends Action {
 
 	@Override
 	void run(Object context, Map<String, Object> variables) {
-		for (Action a : actions) {
-			EventCommand.l("  Executing %s", a.command);
-			a.run(context, variables);
+		boolean inFiltered = false, fastForward = false;
+		for (int i=0; i<actions.size(); i++) {
+			Action a = actions.get(i);
+			if (a instanceof Filtered) {
+				Filtered f = (Filtered) a;
+				if (!inFiltered) {
+					if (f.lastCase) throw new RuntimeException("Filter consists of only \"otherwise\"!");
+					inFiltered = true;
+					fastForward = false;
+				}
+				if (fastForward) {
+					if (f.lastCase) inFiltered = false;
+				} else if (f.test(variables)) {
+					fastForward = true;
+					f.run(context, variables);
+				}
+			} else {
+				inFiltered = false;
+				EventCommand.l("  Executing %s", a.command);
+				a.run(context, variables);
+			}
 		}
 	}
 

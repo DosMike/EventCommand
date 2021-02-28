@@ -61,6 +61,12 @@ public class Utils {
         }
         return entry;
     }
+    static String resolveVariablesNumeric(String entry, Map<String, Object> variables) {
+        for (Map.Entry<String, Object> e : variables.entrySet()) {
+            entry = entry.replace("${" + e.getKey() + "}", toDouble(e.getValue()).toString());
+        }
+        return entry;
+    }
 
     static UUID toPlayerUUID(Object object) {
         if (object == null) return null;
