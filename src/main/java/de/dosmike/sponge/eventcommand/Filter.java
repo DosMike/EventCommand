@@ -6,4 +6,8 @@ public interface Filter {
 
 	boolean test(Map<String,Object> variables, Filtered ruleSet);
 
+	static Filter negate(Filter f) {
+		return (variables, ruleSet) -> !f.test(variables, ruleSet);
+	}
+
 }

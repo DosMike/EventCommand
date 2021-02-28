@@ -3,15 +3,15 @@ package de.dosmike.sponge.eventcommand;
 import java.io.IOException;
 import java.util.*;
 
-public class Filtered extends Action {
+public class Filtered extends ActionGroup {
 
 	List<Filter> filters = new LinkedList<>();
 	Map<UUID, Long> clientCD;
 	Long globalCD;
 
-	List<Action> actions = new LinkedList<>();
-
 	public Filtered(String line) throws IOException {
+		super(-1);
+
 		if (line.toLowerCase(Locale.ROOT).equals("otherwise")) return; //no filters for the "else" case
 		// skip the 'for'
 		// for every csv parse the condition, keep quoted strings in mind
@@ -49,15 +49,14 @@ public class Filtered extends Action {
 		}
 	}
 
-	public boolean evaluate(Map<String, Object> variables) {
+	public boolean test(Map<String, Object> variables) {
 		for (Filter f : filters) if (!f.test(variables, this)) return false;
 		return true;
 	}
 
 	@Override
 	void run(Object context, Map<String, Object> variables) {
-		if (evaluate(variables))
-			for (Action a : actions)
-				a.run(context, variables);
+		if (test(variables))
+			super.run(context, variables);
 	}
 }

@@ -7,7 +7,7 @@ import java.util.List;
 
 public class SpongeTrigger extends Trigger<Event> {
 
-    public SpongeTrigger(String classname, List<WithChain> variables, List<Action> actions) {
+    public SpongeTrigger(String classname, List<WithChain> variables, ActionGroup actions) {
         super(Utils.tryLoad(classname, Event.class)
                         .orElseThrow(() -> new RuntimeException("Could not find event (include package): " + classname))
                 , variables, actions);

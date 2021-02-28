@@ -24,7 +24,7 @@ public class ECParser {
 
 	List<Trigger<?>> parsed = new LinkedList<>();
 	List<WithChain> variables = new ArrayList<>();
-	List<Action> actions = new ArrayList<>();
+	ActionGroup actions = null;
 	int lineNo = 0;
 	Path path;
 	LineType lastParsed = LineType.INVALID;
@@ -40,9 +40,18 @@ public class ECParser {
 			br = new BufferedReader(new InputStreamReader(Files.newInputStream(path)));
 			String line;
 
+			char globalIndent = 0;
 			while ((line = br.readLine()) != null) {
 				lineNo++;
-				line = line.trim();
+				char spaceChar=0,off=0;
+				while (Character.isWhitespace(line.charAt(off))) {
+					if (globalIndent != 0 && line.charAt(off) != globalIndent) throw new IOException("Mixed indentation between lines is not supported");
+					else if (globalIndent == 0) globalIndent = line.charAt(off);
+					if (off == 0) spaceChar = line.charAt(off);
+					else if (line.charAt(off) != spaceChar) throw new IOException("Mixed indentation within line is not supported");
+					off++;
+				}
+				line = line.substring(off).trim();
 				if (line.startsWith("--") || line.isEmpty()) continue; //comments
 				switch (guessType(line)) {
 					case TRIGGER: {
@@ -55,11 +64,11 @@ public class ECParser {
 						break;
 					}
 					case FILTER: {
-						//parseFilter(line);
+						parseFilter(line, off);
 						break;
 					}
 					case ACTION: {
-						parseAction(line);
+						parseAction(line, off);
 						break;
 					}
 				}
@@ -99,10 +108,10 @@ public class ECParser {
 		} else if (type == LineType.WITH_CHAIN) {
 			if (lastParsed == LineType.INVALID) {
 				throw new IllegalStateException("Expected event name at line " + lineNo);
-			} else if (lastParsed == LineType.ACTION) { //actions can be repeated or followed by new triggers, we're in another with chain!
-				throw new IllegalStateException("Expected action or event name at line " + lineNo);
+			} else if (lastParsed == LineType.ACTION || lastParsed == LineType.FILTER) { //actions can be repeated or followed by new triggers, we're in another with chain!
+				throw new IllegalStateException("Expected action, filter or event name at line " + lineNo);
 			}
-		} else if (type == LineType.ACTION && lastParsed == LineType.INVALID) {
+		} else if ((type == LineType.ACTION || type == LineType.FILTER) && lastParsed == LineType.INVALID) {
 			throw new IllegalStateException("Expected event name at line " + lineNo);
 		}
 		return type;
@@ -118,7 +127,15 @@ public class ECParser {
 		lastParsed = LineType.WITH_CHAIN;
 	}
 
-	private void parseAction(String line) {
+	private void parseFilter(String line, int indent) throws IOException {
+		setActionGroup(indent);
+		Filtered f = new Filtered(line);
+		f.parent = actions;
+		actions = f;
+	}
+
+	private void parseAction(String line, int indent) throws IOException {
+		setActionGroup(indent);
 		if (line.startsWith("!")) {
 			actions.add(new Action(line.substring(1).trim(), CommandSourceResolver.Factory.Server()));
 		} else {
@@ -127,9 +144,24 @@ public class ECParser {
 		lastParsed = LineType.ACTION;
 	}
 
+	private void setActionGroup(int indent) throws IOException {
+		if (actions == null) {
+			actions = new ActionGroup(indent);
+		} else {
+			if (actions.depth == -1 && indent > actions.parent.depth) { //sub-group was created, but it doesn't know it's depth yet
+				actions.depth = indent;
+			} else if (indent > actions.depth) { //arbitrarily stepping in does not really make sense
+				//actions = new ActionGroup(indent, actions);
+				throw new IOException("Cannot arbitrarily increase indentation, preceding filter is required");
+			} else if (indent < actions.depth) {
+				actions = actions.findParent(indent);
+			}
+		}
+	}
+
 	private void closeTrigger() throws IOException {
 		if (nextTrigger != null) {
-			if (actions.isEmpty()) {
+			if (actions == null) {
 				throw new IllegalStateException("Trigger \"" + nextTrigger + "\" does not specify any actions before line " + lineNo);
 			}
 			try {
@@ -139,7 +171,7 @@ public class ECParser {
 			}
 		}
 		variables.clear();
-		actions.clear();
+		actions = null;
 	}
 
 }

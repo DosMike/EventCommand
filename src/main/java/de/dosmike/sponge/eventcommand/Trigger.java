@@ -9,15 +9,15 @@ public abstract class Trigger<EventType> {
 
     protected Class<? extends EventType> eventClass;
     protected Map<String, WithChain> variables = new HashMap<>();
-    protected List<Action> actions = new ArrayList<>();
+    protected ActionGroup actions;
 
-    protected Trigger(Class<? extends EventType> clazz, List<WithChain> variables, List<Action> actions) {
+    protected Trigger(Class<? extends EventType> clazz, List<WithChain> variables, ActionGroup actions) {
         this.eventClass = clazz;
         register(eventClass);
         for (WithChain with : variables) {
             this.variables.put(with.name.toLowerCase(), with);
         }
-        this.actions.addAll(actions);
+        this.actions = actions;
     }
 
     protected abstract <T extends EventType> void register(Class<T> eventClass);
@@ -36,10 +36,7 @@ public abstract class Trigger<EventType> {
                 values.put(k, v);
                 EventCommand.l("(%d) Resolved %s to %s", hc, k, v);
             }
-            for (Action a : actions) {
-                EventCommand.l("(%d) Executing %s", hc, a.command);
-                a.run(event, values);
-            }
+            actions.run(event, values);
         } catch (Exception e) {
             EventCommand.w("(%d) Error during event trigger:", hc);
             EventCommand.simplePrint(e);

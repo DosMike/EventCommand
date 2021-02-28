@@ -23,7 +23,7 @@ public class TriggerFactory {
 		isLuckPermsLoaded = Sponge.getPluginManager().getPlugin("luckperms").isPresent();
 	}
 
-	public <E> Trigger<E> create(String classname, List<WithChain> variables, List<Action> actions) {
+	public <E> Trigger<E> create(String classname, List<WithChain> variables, ActionGroup actions) {
 		if (classname.startsWith("net.luckperms.api.event.")) {
 			if (!isLuckPermsLoaded)
 				throw new IllegalStateException("Detected LuckPerms hooks, but LuckPerms is missing on the Server!");

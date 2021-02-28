@@ -196,14 +196,19 @@ public class FilterFactory {
 
 	public static Filter create(String rule) throws IOException {
 		List<Token> tokens = tokenize(rule);
+		boolean negate;
+		Filter result = null;
 		try {
+			negate = (tokens.size() > 0 && tokens.get(0).type == Type.KEYWORD && tokens.get(0).ciEquals("not"));
+			if (negate) tokens.remove(0);
+
 			if (tokens.size() == 3) {
 				if (tokens.get(1).type == Type.KEYWORD && tokens.get(1).ciEquals("every") &&
 					tokens.get(2).type == Type.DURATION) {
 					if (tokens.get(0).type == Type.KEYWORD && tokens.get(0).ciEquals("global"))
-						return new GlobalCooldown(tokens.get(2).srep.toLowerCase(Locale.ROOT));
+						result = new GlobalCooldown(tokens.get(2).srep.toLowerCase(Locale.ROOT));
 					else if (tokens.get(0).type == Type.VARIABLE)
-						return new PlayerCooldown(tokens.get(0).srep.toLowerCase(Locale.ROOT), tokens.get(2).srep.toLowerCase(Locale.ROOT));
+						result = new PlayerCooldown(tokens.get(0).srep.toLowerCase(Locale.ROOT), tokens.get(2).srep.toLowerCase(Locale.ROOT));
 					else
 						throw new IOException("Invalid cooldown condition. Subject needs to be 'global' or variable at \""+rule+"\"");
 				}
@@ -212,27 +217,28 @@ public class FilterFactory {
 						throw new IOException("Right side of hasPermission has to be a quoted string at \""+rule+"\"");
 					if (tokens.get(0).type != Type.VARIABLE)
 						throw new IOException("Left side of hasPermission has to be a player variable at \""+rule+"\"");
-					return new PlayerPermission(tokens.get(0).srep, tokens.get(2).srep);
+					result = new PlayerPermission(tokens.get(0).srep, tokens.get(2).srep);
 				}
 				else if ((tokens.get(1).type == Type.OTHER || (tokens.get(1).type == Type.KEYWORD &&tokens.get(1).ciEquals("matches") )) &&
 					(tokens.get(0).type == Type.STRING || tokens.get(0).type == Type.VARIABLE) &&
 					(tokens.get(2).type == Type.STRING || tokens.get(2).type == Type.VARIABLE)) {
 					if (tokens.get(0).type == Type.VARIABLE && tokens.get(1).type == Type.VARIABLE)
-						return new VariableCondition(tokens.get(0).srep, tokens.get(1).srep.toLowerCase(Locale.ROOT), tokens.get(2).srep);
+						result = new VariableCondition(tokens.get(0).srep, tokens.get(1).srep.toLowerCase(Locale.ROOT), tokens.get(2).srep);
 					else
-						return new StringCondition(tokens.get(0), tokens.get(1).srep.toLowerCase(Locale.ROOT), tokens.get(2));
+						result = new StringCondition(tokens.get(0), tokens.get(1).srep.toLowerCase(Locale.ROOT), tokens.get(2));
 				}
 				else if (tokens.get(1).type == Type.OTHER &&
 					(tokens.get(0).type == Type.NUMERIC || tokens.get(0).type == Type.VARIABLE) &&
 					(tokens.get(2).type == Type.NUMERIC || tokens.get(2).type == Type.VARIABLE)) {
 					if (tokens.get(0).type == Type.VARIABLE && tokens.get(1).type == Type.VARIABLE)
 						//can this be reached?
-						return new VariableCondition(tokens.get(0).srep, tokens.get(1).srep.toLowerCase(Locale.ROOT), tokens.get(2).srep);
+						result = new VariableCondition(tokens.get(0).srep, tokens.get(1).srep.toLowerCase(Locale.ROOT), tokens.get(2).srep);
 					else
-						return new NumericCondition(tokens.get(0), tokens.get(1).srep, tokens.get(1));
+						result = new NumericCondition(tokens.get(0), tokens.get(1).srep, tokens.get(1));
 				}
 			}
-			throw new IOException("Unknown filter condition syntax for \""+rule+"\"");
+			if (result == null) throw new IOException("Unknown filter condition syntax for \""+rule+"\"");
+			return negate ? Filter.negate(result) : result;
 		} catch (RuntimeException e) {
 			throw new IOException("Failed to parse condition \""+rule+"\"", e);
 		}
