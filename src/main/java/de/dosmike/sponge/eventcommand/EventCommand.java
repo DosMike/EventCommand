@@ -20,7 +20,7 @@ import java.util.Arrays;
 import java.util.List;
 import java.util.stream.Collectors;
 
-@Plugin(id = "eventcommand", name = "Event Command", version = "1.1")
+@Plugin(id = "eventcommand", name = "Event Command", version = "1.2")
 public class EventCommand {
 
     private static EventCommand instance;
