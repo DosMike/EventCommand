@@ -1,18 +1,19 @@
-package de.dosmike.sponge.eventcommand;
+package de.dosmike.sponge.eventcommand.statements;
 
+import de.dosmike.sponge.eventcommand.EventCommand;
+import de.dosmike.sponge.eventcommand.VariableContext;
 import org.spongepowered.api.Sponge;
 
-import java.util.Map;
 import java.util.regex.Matcher;
 import java.util.regex.Pattern;
 
-public class Action {
+public class CommandAction implements Action {
 
     String command;
     Pattern pat = Pattern.compile("(\\$\\{\\p{L}+})");
     CommandSourceResolver resolver;
 
-    public Action(String action, CommandSourceResolver resolver) {
+    public CommandAction(String action, CommandSourceResolver resolver) {
         this.resolver = resolver;
 
         command = action.charAt(0) == '/' ? action.substring(1) : action;
@@ -28,11 +29,14 @@ public class Action {
             sb.append(command.substring(lastEnd));
         command = sb.toString();
     }
-    protected Action() {
+    protected CommandAction() {
     }
 
-    void run(Object context, Map<String, Object> variables) {
-        Sponge.getCommandManager().process(resolver.get(context), Utils.resolveVariables(command, variables));
+    @Override
+    public void run(Object context, VariableContext variables) {
+        if (EventCommand.isVerboseLogging())
+            EventCommand.l("  Executing %s", command);
+        Sponge.getCommandManager().process(resolver.get(context), variables.resolveVariables(command));
     }
 
 }

@@ -1,5 +1,11 @@
-package de.dosmike.sponge.eventcommand;
+package de.dosmike.sponge.eventcommand.statements.luckperms;
 
+import de.dosmike.sponge.eventcommand.*;
+import de.dosmike.sponge.eventcommand.exception.StatementParseException;
+import de.dosmike.sponge.eventcommand.statements.ActionGroup;
+import de.dosmike.sponge.eventcommand.statements.Computing;
+import de.dosmike.sponge.eventcommand.statements.Trigger;
+import de.dosmike.sponge.eventcommand.statements.WithChain;
 import net.luckperms.api.LuckPermsProvider;
 import net.luckperms.api.event.EventSubscription;
 import net.luckperms.api.event.LuckPermsEvent;
@@ -12,7 +18,7 @@ public class LuckPermsTrigger extends Trigger<LuckPermsEvent> {
 
     public LuckPermsTrigger(String classname, List<WithChain> variables, List<Computing> maths, ActionGroup actions) {
         super(Utils.tryLoad(classname, LuckPermsEvent.class)
-                        .orElseThrow(() -> new RuntimeException("Could not find event (include package): " + classname))
+                        .orElseThrow(() -> new StatementParseException("Could not find event (include package): " + classname))
                 , variables, maths, actions);
     }
 

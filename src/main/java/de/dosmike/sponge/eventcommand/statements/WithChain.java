@@ -1,4 +1,8 @@
-package de.dosmike.sponge.eventcommand;
+package de.dosmike.sponge.eventcommand.statements;
+
+import de.dosmike.sponge.eventcommand.Mapper;
+import de.dosmike.sponge.eventcommand.exception.ScriptExecutionException;
+import de.dosmike.sponge.eventcommand.exception.StatementParseException;
 
 import java.util.ArrayList;
 import java.util.List;
@@ -16,12 +20,12 @@ public class WithChain {
         String[] tokens = lineDef.split(" ");
 	    if (tokens.length >= 4 && tokens[0].equalsIgnoreCase("with") && tokens[2].equalsIgnoreCase("as")) {
 		    name = tokens[1].toLowerCase();
-		    if (!onlyLetters.test(name)) throw new IllegalArgumentException("Variables names may only contain letters");
+		    if (!onlyLetters.test(name)) throw new StatementParseException("Variables names may only contain letters");
 		    for (int i = 3; i < tokens.length; i++) {
 			    mappers.add(Mapper.fromString(tokens[i]));
 		    }
 	    } else {
-		    throw new IllegalArgumentException("'with'-chain definition is invalid!");
+		    throw new StatementParseException("'with'-chain definition is invalid!");
 	    }
     }
 
@@ -35,7 +39,7 @@ public class WithChain {
 			if (v instanceof Number)
 				return v;
 			return v.toString();
-		}).orElseThrow(() -> new RuntimeException("Could not resolve 'with'-chain"));
+		}).orElseThrow(() -> new ScriptExecutionException("Could not resolve 'with'-chain"));
 	}
 
 }

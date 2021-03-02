@@ -1,5 +1,9 @@
-package de.dosmike.sponge.eventcommand;
+package de.dosmike.sponge.eventcommand.statements;
 
+import de.dosmike.sponge.eventcommand.Utils;
+import de.dosmike.sponge.eventcommand.VariableContext;
+import de.dosmike.sponge.eventcommand.exception.StatementParseException;
+import de.dosmike.sponge.eventcommand.exception.VariableTypeException;
 import org.spongepowered.api.Sponge;
 
 import java.io.IOException;
@@ -18,11 +22,10 @@ public class FilterFactory {
 			this.duration = parseDuration(duration);
 		}
 		@Override
-		public boolean test(Map<String, Object> variables, Filtered ruleSet) {
-			Object vvalue = variables.get(variable);
-			if (vvalue == null) throw new NullPointerException("The Variable \""+variable+"\" did not contain a value");
-			UUID player = Utils.toPlayerUUID(variables.get(variable));
-			if (player == null) throw new NoSuchElementException("Could not find a player from the value \""+variables.get(variable).toString()+"\" of variable \""+variable+"\"");
+		public boolean test(VariableContext variables, Filtered ruleSet) {
+			Object vvalue = variables.require(variable);
+			UUID player = Utils.toPlayerUUID(vvalue);
+			if (player == null) throw new VariableTypeException("Could not find a player from the value \""+vvalue.toString()+"\" of variable \""+variable+"\"");
 
 			//clean up cooldowns
 			long now = System.currentTimeMillis()/1000L;
@@ -43,7 +46,7 @@ public class FilterFactory {
 			this.duration = parseDuration(duration);
 		}
 		@Override
-		public boolean test(Map<String, Object> variables, Filtered ruleSet) {
+		public boolean test(VariableContext variables, Filtered ruleSet) {
 			long now = System.currentTimeMillis()/1000L;
 			if (ruleSet.globalCD+duration < now) return false;
 			ruleSet.globalCD = now;
@@ -58,11 +61,10 @@ public class FilterFactory {
 			this.permission = permission;
 		}
 		@Override
-		public boolean test(Map<String, Object> variables, Filtered ruleSet) {
-			Object vvalue = variables.get(variable);
-			if (vvalue == null) throw new NullPointerException("The Variable \""+variable+"\" did not contain a value");
-			UUID player = Utils.toPlayerUUID(variables.get(variable));
-			if (player == null) throw new NoSuchElementException("Could not find a player from the value \""+variables.get(variable).toString()+"\" of variable \""+variable+"\"");
+		public boolean test(VariableContext variables, Filtered ruleSet) {
+			Object vvalue = variables.require(variable);
+			UUID player = Utils.toPlayerUUID(vvalue);
+			if (player == null) throw new VariableTypeException("Could not find a player from the value \""+vvalue.toString()+"\" of variable \""+variable+"\"");
 
 			return Sponge.getServer().getPlayer(player).orElseThrow(()->new IllegalStateException("Player for UUID \""+player.toString()+"\" seems to be currently offline")).hasPermission(permission);
 		}
@@ -73,21 +75,35 @@ public class FilterFactory {
 		BiPredicate<Double,Double> comp;
 		NumericCondition(Token left, String comparator, Token right) {
 			if (left.type != Type.NUMERIC && left.type != Type.VARIABLE)
-				throw new IllegalArgumentException("Numeric conditions left hand was not a number or variable");
+				throw new StatementParseException("Numeric conditions left hand was not a number or variable");
 			if (right.type != Type.NUMERIC && right.type != Type.VARIABLE)
-				throw new IllegalArgumentException("Numeric conditions right hand was not a number or variable");
+				throw new StatementParseException("Numeric conditions right hand was not a number or variable");
 			if (left.type == Type.NUMERIC && right.type == Type.NUMERIC)
-				throw new IllegalArgumentException("Numeric conditions is constant. Please resolve manually!");
+				throw new StatementParseException("Numeric conditions is constant. Please resolve manually!");
+			this.leftToken = left;
+			this.rightToken = right;
 			this.leftAsNumber = left.type == Type.NUMERIC ? Double.parseDouble(left.srep) : null;
 			this.rightAsNumber = right.type == Type.NUMERIC ? Double.parseDouble(right.srep) : null;
 
 			this.comp = getComparator(comparator);
 		}
 		@Override
-		public boolean test(Map<String, Object> variables, Filtered ruleSet) {
+		public boolean test(VariableContext variables, Filtered ruleSet) {
 			Double left, right;
-			left = leftToken.type == Type.NUMERIC ? leftAsNumber : Utils.toDouble(variables.get(leftToken.srep));
-			right = rightToken.type == Type.NUMERIC ? rightAsNumber : Utils.toDouble(variables.get(rightToken.srep));
+			if (leftToken.type == Type.NUMERIC) {
+				left = leftAsNumber;
+			} else {
+				Object vvalue = variables.require(leftToken.srep);
+				try { left = Utils.toDouble(vvalue); }
+				catch (IllegalArgumentException e) { throw new VariableTypeException("The Variable \""+leftToken.srep+"\" is not numeric (value: ``"+vvalue.toString()+"``)"); }
+			}
+			if (rightToken.type == Type.NUMERIC) {
+				right = rightAsNumber;
+			} else {
+				Object vvalue = variables.require(rightToken.srep);
+				try { right = Utils.toDouble(vvalue); }
+				catch (IllegalArgumentException e) { throw new VariableTypeException("The Variable \""+rightToken.srep+"\" is not numeric (value: ``"+vvalue.toString()+"``)"); }
+			}
 			return comp.test(left,right);
 		}
 		static BiPredicate<Double,Double> getComparator(String fromSymbol) {
@@ -107,7 +123,7 @@ public class FilterFactory {
 				case ">":
 					return (a, b) -> a.compareTo(b) > 0;
 				default:
-					throw new IllegalArgumentException("Unknown numeric comparator");
+					throw new StatementParseException("Unknown numeric comparator");
 			}
 		}
 	}
@@ -116,19 +132,29 @@ public class FilterFactory {
 		BiPredicate<String,String> comp;
 		StringCondition(Token left, String comparator, Token right) {
 			if (left.type != Type.STRING && left.type != Type.VARIABLE)
-				throw new IllegalArgumentException("Numeric conditions left hand was not a number or variable");
+				throw new StatementParseException("Numeric conditions left hand was not a number or variable");
 			if (right.type != Type.STRING && right.type != Type.VARIABLE)
-				throw new IllegalArgumentException("Numeric conditions right hand was not a number or variable");
+				throw new StatementParseException("Numeric conditions right hand was not a number or variable");
 			if (left.type == Type.STRING && right.type == Type.STRING)
-				throw new IllegalArgumentException("Numeric conditions is constant. Please resolve manually!");
+				throw new StatementParseException("Numeric conditions is constant. Please resolve manually!");
+			this.leftToken = left;
+			this.rightToken = right;
 
 			this.comp = getComparator(comparator);
 		}
 		@Override
-		public boolean test(Map<String, Object> variables, Filtered ruleSet) {
+		public boolean test(VariableContext variables, Filtered ruleSet) {
 			String left, right;
-			left = leftToken.type == Type.STRING ? leftToken.srep : variables.get(leftToken.srep).toString();
-			right = rightToken.type == Type.STRING ? rightToken.srep : variables.get(rightToken.srep).toString();
+			if (leftToken.type == Type.STRING) {
+				left = leftToken.srep;
+			} else {
+				left = variables.require(leftToken.srep).toString();
+			}
+			if (rightToken.type == Type.STRING) {
+				right = rightToken.srep;
+			} else {
+				right = variables.require(rightToken.srep).toString();
+			}
 			return comp.test(left,right);
 		}
 		static BiPredicate<String,String> getComparator(String fromSymbol) {
@@ -152,7 +178,7 @@ public class FilterFactory {
 				case "matches":
 					return String::matches;
 				default:
-					throw new IllegalArgumentException("Unknown string comparator");
+					throw new StatementParseException("Unknown string comparator");
 			}
 		}
 	}
@@ -176,14 +202,15 @@ public class FilterFactory {
 					cmp = comparator;
 					break;
 				default:
-					throw new IllegalArgumentException("Unknown value comparator");
+					throw new StatementParseException("Unknown value comparator");
 			}
 		}
 		@Override
-		public boolean test(Map<String, Object> variables, Filtered ruleSet) {
+		public boolean test(VariableContext variables, Filtered ruleSet) {
 			Object left, right;
-			left = variables.get(leftVar);
-			right = variables.get(rightVar);
+			left = variables.require(leftVar);
+			right = variables.require(rightVar);
+
 			try {
 				Double lad = Utils.toDouble(left), rad = Utils.toDouble(right);
 				return NumericCondition.getComparator(cmp).test(lad,rad);
@@ -210,13 +237,13 @@ public class FilterFactory {
 					else if (tokens.get(0).type == Type.VARIABLE)
 						result = new PlayerCooldown(tokens.get(0).srep.toLowerCase(Locale.ROOT), tokens.get(2).srep.toLowerCase(Locale.ROOT));
 					else
-						throw new IOException("Invalid cooldown condition. Subject needs to be 'global' or variable at \""+rule+"\"");
+						throw new StatementParseException("Invalid cooldown condition. Subject needs to be 'global' or variable at \""+rule+"\"");
 				}
 				else if (tokens.get(1).type == Type.KEYWORD && tokens.get(1).ciEquals("hasPermission")) {
 					if (tokens.get(2).type != Type.STRING)
-						throw new IOException("Right side of hasPermission has to be a quoted string at \""+rule+"\"");
+						throw new StatementParseException("Right side of hasPermission has to be a quoted string at \""+rule+"\"");
 					if (tokens.get(0).type != Type.VARIABLE)
-						throw new IOException("Left side of hasPermission has to be a player variable at \""+rule+"\"");
+						throw new StatementParseException("Left side of hasPermission has to be a player variable at \""+rule+"\"");
 					result = new PlayerPermission(tokens.get(0).srep, tokens.get(2).srep);
 				}
 				else if ((tokens.get(1).type == Type.OTHER || (tokens.get(1).type == Type.KEYWORD &&tokens.get(1).ciEquals("matches") )) &&
@@ -234,13 +261,13 @@ public class FilterFactory {
 						//can this be reached?
 						result = new VariableCondition(tokens.get(0).srep, tokens.get(1).srep.toLowerCase(Locale.ROOT), tokens.get(2).srep);
 					else
-						result = new NumericCondition(tokens.get(0), tokens.get(1).srep, tokens.get(1));
+						result = new NumericCondition(tokens.get(0), tokens.get(1).srep, tokens.get(2));
 				}
 			}
-			if (result == null) throw new IOException("Unknown filter condition syntax for \""+rule+"\"");
+			if (result == null) throw new StatementParseException("Unknown filter condition syntax for \""+rule+"\"");
 			return negate ? Filter.negate(result) : result;
 		} catch (RuntimeException e) {
-			throw new IOException("Failed to parse condition \""+rule+"\"", e);
+			throw new StatementParseException("Failed to parse condition \""+rule+"\"", e);
 		}
 	}
 
@@ -305,7 +332,7 @@ public class FilterFactory {
 	private static final Pattern variablePattern = Pattern.compile("^\\$\\{(\\p{L}+)}");
 	private static final Pattern durationPattern = Pattern.compile("^[0-9]+(?:(?:h|m(?:in)?|s(?:ec)?)|(?::[0-9]{2}(?::[0-9]{2})?))");
 	private static final Pattern keywordPattern = Pattern.compile("^(\\p{L}+)(?:\\b|$)");
-	private static final Pattern symbolsPattern = Pattern.compile("^([^\\p{L}\\p{Digit}]+)");
+	private static final Pattern symbolsPattern = Pattern.compile("^([^\\p{L}\\p{Digit}\\p{javaWhitespace}]+)");
 	static List<Token> tokenize(String rule) throws IOException {
 		int q,s,off=0;
 		List<Token> tokens = new LinkedList<>();
@@ -315,11 +342,11 @@ public class FilterFactory {
 				q = off;
 				while (true) {
 					q = Utils.firstIndexOf(rule, "\\\"", q + 1);
-					if (q==-1) throw new IOException("Unterminated String!"); //should not happen here
+					if (q==-1) throw new StatementParseException("Unterminated String!"); //should not happen here
 					if (rule.charAt(q)=='\\') {
-						if (q+1 == rule.length()) throw new IOException("Unterminated String!"); //escape at eol?
+						if (q+1 == rule.length()) throw new StatementParseException("Unterminated String!"); //escape at eol?
 						char escaped = rule.charAt(q+1);
-						if (escaped != 'n' && escaped != 't' && escaped != '\\' && escaped != '"') throw new IOException("Invalid escape: \\n \\t \\\\ and \\\" are supported");
+						if (escaped != 'n' && escaped != 't' && escaped != '\\' && escaped != '"') throw new StatementParseException("Invalid escape: \\n \\t \\\\ and \\\" are supported");
 						q++;//skip escaped char
 					} else {
 						String token = rule.substring(off+1, q-1);
@@ -333,7 +360,7 @@ public class FilterFactory {
 								case 't': rep = '\t'; break;
 								case '\\': rep = '\\'; break;
 								case '"': rep = '"'; break;
-								default: throw new RuntimeException("Failsafe: unsupported escape");
+								default: throw new StatementParseException("Failsafe: unsupported escape");
 							}
 							unescaped.append(token, 0, q).append(rep);
 							q+=2;
@@ -350,19 +377,19 @@ public class FilterFactory {
 				if (poke.indexOf(':')>0 || Character.isLetter(poke.charAt(poke.length()-1))) {
 					//probably a duration
 					Matcher m = durationPattern.matcher(rule.substring(off));
-					if (!m.find()) throw new NumberFormatException("Could not parse duration around char "+off+" in rule `"+rule+"`");
+					if (!m.find()) throw new StatementParseException("Could not parse duration around char "+off+" in rule `"+rule+"`");
 					tokens.add(new Token(m.group(), Type.DURATION));
 					off += m.end();
 				} else {
 					//probably a numeric
 					Matcher m = numericPattern.matcher(rule.substring(off));
-					if (!m.find()) throw new NumberFormatException("Could not parse number around char "+off+" in rule `"+rule+"`");
+					if (!m.find()) throw new StatementParseException("Could not parse number around char "+off+" in rule `"+rule+"`");
 					tokens.add(new Token(m.group(), Type.NUMERIC));
 					off += m.end();
 				}
 			} else if (rule.charAt(off) == '$') {
 				Matcher m = variablePattern.matcher(rule.substring(off));
-				if (!m.find()) throw new NumberFormatException("Malformed variable indicator around char "+off+" in rule `"+rule+"`");
+				if (!m.find()) throw new StatementParseException("Malformed variable indicator around char "+off+" in rule `"+rule+"`");
 				tokens.add(new Token(m.group(1), Type.VARIABLE));
 				off += m.end();
 			} else {
@@ -380,12 +407,6 @@ public class FilterFactory {
 			}
 		}
 		return tokens;
-	}
-	int indexOfSpace(String string, int off) {
-		for (int i = off; i<string.length(); i++) {
-			if (Character.isWhitespace(string.charAt(i))) return i;
-		}
-		return -1;
 	}
 
 }

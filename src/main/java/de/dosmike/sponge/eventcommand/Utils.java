@@ -2,20 +2,17 @@ package de.dosmike.sponge.eventcommand;
 
 import org.spongepowered.api.Sponge;
 import org.spongepowered.api.command.CommandSource;
-import org.spongepowered.api.entity.living.player.Player;
 import org.spongepowered.api.entity.living.player.User;
 import org.spongepowered.api.service.permission.Subject;
 import org.spongepowered.api.text.Text;
 import org.spongepowered.api.util.Identifiable;
 
-import java.util.Map;
 import java.util.Optional;
 import java.util.UUID;
-import java.util.concurrent.ExecutionException;
 
 public class Utils {
 
-    static <T> Optional<Class<? extends T>> tryLoad(String className, Class<T> baseClass) {
+    public static <T> Optional<Class<? extends T>> tryLoad(String className, Class<T> baseClass) {
         Class<?> result;
         try {
             result = Utils.class.getClassLoader().loadClass(className);
@@ -54,21 +51,7 @@ public class Utils {
         return object.toString();
     }
 
-    // resolve vars into a string using ${} placeholders
-    static String resolveVariables(String entry, Map<String, Object> variables) {
-        for (Map.Entry<String, Object> e : variables.entrySet()) {
-            entry = entry.replace("${" + e.getKey() + "}", e.getValue().toString());
-        }
-        return entry;
-    }
-    static String resolveVariablesNumeric(String entry, Map<String, Object> variables) {
-        for (Map.Entry<String, Object> e : variables.entrySet()) {
-            entry = entry.replace("${" + e.getKey() + "}", toDouble(e.getValue()).toString());
-        }
-        return entry;
-    }
-
-    static UUID toPlayerUUID(Object object) {
+    public static UUID toPlayerUUID(Object object) {
         if (object == null) return null;
         if (object instanceof User) {
             return ((User) object).getUniqueId();
@@ -87,7 +70,7 @@ public class Utils {
             }
         } else return null; // don't know how to resolve this into a uuid
     }
-    static Double toDouble(Object object) {
+    public static Double toDouble(Object object) {
         Class<?> clz = object.getClass();
         if (clz == Boolean.class) return ((Boolean)object) ? 1.0 : 0.0;
         else if (clz == Boolean.TYPE) return ((boolean)object) ? 1.0 : 0.0;
