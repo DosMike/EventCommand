@@ -18,7 +18,7 @@ import java.util.*;
 public abstract class Mapper {
 
     String key;
-    abstract Optional<?> map(Optional<?> in);
+    public abstract Optional<?> map(Optional<?> in);
 
 	static class Getter extends Mapper {
 		public Getter(String method) {
@@ -43,7 +43,7 @@ public abstract class Mapper {
 			}
 		}
 
-		Optional<?> map(Optional<?> in) {
+		public Optional<?> map(Optional<?> in) {
 			try {
 				if (hasMethod(in.get().getClass(), key)) {
 					Method m = in.get().getClass().getMethod(key);
@@ -93,7 +93,7 @@ public abstract class Mapper {
             // optional of require allows to print into console if a key does not exist since it throws
             return Optional.of(dh.require((Key<? extends BaseValue<E>>)key));
         }
-        Optional<?> map(Optional<?> in) {
+        public Optional<?> map(Optional<?> in) {
             if (in.orElse(null) instanceof ValueContainer<?>) {
                 ValueContainer<?> dh = (ValueContainer<?>) in.get();
                 return Utils.makeOptional( dh.getKeys().stream()
@@ -117,7 +117,7 @@ public abstract class Mapper {
             key = keyName;
             clz = Utils.tryLoad(keyName).orElseThrow(()->new StatementParseException("No class found for \""+key+"\""));
         }
-        Optional<?> map(Optional<?> in) {
+        public Optional<?> map(Optional<?> in) {
             if (in.orElse(null) instanceof Event) {
                 Event e = (Event) in.get();
                 return Utils.makeOptional( e.getCause().all().stream().filter(cause->
@@ -141,7 +141,7 @@ public abstract class Mapper {
             i = Integer.parseInt(key)-1;
             if (i<0) throw new StatementParseException("Index has to be positive (non-null)");
         }
-        Optional<?> map(Optional<?> in) {
+        public Optional<?> map(Optional<?> in) {
             if (in.get() instanceof Array) {
                 if (i < Array.getLength(in.get())) return Utils.makeOptional(Array.get(in.get(),i));
                 else throw new ScriptExecutionException("Error in 'with'-chain at \""+key+"\": Iterable has not enough elements");

@@ -38,6 +38,8 @@ public class WithChain {
 		return value.map(v -> {
 			if (v instanceof Number)
 				return v;
+			else if (v instanceof Boolean)
+				return ((Boolean)v)?1:0;
 			return v.toString();
 		}).orElseThrow(() -> new ScriptExecutionException("Could not resolve 'with'-chain"));
 	}

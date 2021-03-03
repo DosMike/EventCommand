@@ -1,9 +1,14 @@
 package de.dosmike.sponge.eventcommand.statements;
 
+import com.sun.corba.se.impl.orbutil.concurrent.Sync;
 import de.dosmike.sponge.eventcommand.EventCommand;
 import de.dosmike.sponge.eventcommand.VariableContext;
 import org.spongepowered.api.Sponge;
+import org.spongepowered.api.command.CommandResult;
+import org.spongepowered.api.command.CommandSource;
+import org.spongepowered.api.scheduler.Task;
 
+import java.util.concurrent.CompletableFuture;
 import java.util.regex.Matcher;
 import java.util.regex.Pattern;
 
@@ -36,7 +41,11 @@ public class CommandAction implements Action {
     public void run(Object context, VariableContext variables) {
         if (EventCommand.isVerboseLogging())
             EventCommand.l("  Executing %s", command);
-        Sponge.getCommandManager().process(resolver.get(context), variables.resolveVariables(command));
+        CommandSource executor = resolver.get(context); //where is this executed (probably console)
+        String resolvedCommand = variables.resolveVariables(command); //plug in all variables
+        //we might be async here, maybe sync manually instead of having sponge complain?
+        CommandResult result = Sponge.getCommandManager().process(executor, resolvedCommand); //execute command
+        variables.read(result); //read result values back into variable context
     }
 
 }

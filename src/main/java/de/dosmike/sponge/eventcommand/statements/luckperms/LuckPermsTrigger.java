@@ -28,7 +28,7 @@ public class LuckPermsTrigger extends Trigger<LuckPermsEvent> {
     }
 
     @Override
-    protected void unregister() {
+    public void unregister() {
         subscription.close();
     }
 

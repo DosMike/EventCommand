@@ -368,6 +368,7 @@ public class FilterFactory {
 						}
 						if (lastIndex < token.length()) unescaped.append(token.substring(lastIndex));
 						tokens.add(new Token(unescaped.toString(), Type.STRING));
+						break;
 					}
 				}
 			} else if (rule.charAt(off)>='0' && rule.charAt(off)<='9' ||

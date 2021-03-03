@@ -9,6 +9,7 @@ You can have any amount of files in that folder.
 
 Lines that start with `--` are ignored.
 Indentation throughout the file has to be consistently either tabs or spaces.
+The whole script (with exception to event names and mappers) is case-insensitive, although it is recommended to use consistent case for readability.
 
 There are 4 types of statements: Triggers, 'with'-chains, mathematics and filters/actions.
 'With'-chains are optional, as are mathematics. If you want to do any mathematics, they have to be after 'with'-chains.
@@ -29,6 +30,10 @@ The syntax is `with NAME as MAPPERS` where NAME is any label (without spaces). M
  * `#key` tries to get a `Key` value from the ValueContainer. Supports field names of [Keys](https://jd.spongepowered.org/7.3.0/org/spongepowered/api/data/key/Keys.html). For other `Key`s you have to use the `Key`'s id.
  * numbers to index into arrays, `List`s or `Iterable`s
  * method names to get values. Methods may not be static or void return.
+
+The following variables are available by default but can be overwritten on event basis:
+ * `GAME` contains `Sponge.getGame()`
+ * `SERVER` contains `Sponge.getServer()`
 
 ### Mathematics
 
@@ -53,21 +58,39 @@ Every condition can specify an arbitrary amount of `CONDITIONS`, but the `otherw
 
 #### Conditions
 
+On **Strings**: String Literals are enclosed in double-quotes(`"`).
+Supported escape sequences are: `\n`, `\t`, `\\` and `\"` 
 * `global every DURATION`   
   `${PLAYER} every DURATION`   
   This filter restricts execution on a time base. `DURATION` can be things like 10m, 1h, 30s or in the format mm:ss or hh:mm:ss.
   Cooldowns per player require a variable that represents a Player object, player name or player uuid.
+* `${PLAYER} hasPermission "PERMISSION"`
+  For some actions you might want to check player permissions. This condition requires `PERMISSION` to be quoted.
+  The player variable again has to represent a Player object, player name or player uuid. 
 * Comparisons   
   You can compare two values, where at lease one has to be a variable. The comparing type has to be numeric or plain text.   
   For numbers the comparators `<`, `>`, `<=`, `>=`, `==` (or `=`), `!=` (or `<>`) are available.   
-  For strings the comparators `<`, `>`, `<=`, `>=`, `===`, `!=` (or `<>`) make case sensitive lexigraphic comparisons. `=` and `==` compare the strings case insensitive.
+  For strings the comparators `<`, `>`, `<=`, `>=`, `===`, `!=` (or `<>`) make case-sensitive lexicographic comparisons.
+  Case-insensitive comparison can be done with `=` and `==`.
+  The special comparator `matches` compiles a right hand string literal into a regex and matches the left hand against it.
 * `not CONDITION`   
   Any condition can be inverted once by prefixing it with the word `not`
 
 ### Actions
 
-Lastly you can specify actions your trigger should take. Actions are command that are either executed as the player triggering the event, or as console if you prefix the command with an exclamation point (`!`) instead of a slash (`/`). Leading slashes for commands are optional. You can insert the values from 'with'-chains with `${NAME}`.
-Please also keep in mind that not every event has a player as cause and you might use something like `!execute as ${PLAYER} run ...`.
+Lastly you can specify actions your trigger should take.
+Actions are command that are either executed as the player triggering the event, or as console if you prefix the
+command with an exclamation point (`!`) instead of a slash (`/`). Leading slashes for commands are optional.
+You can insert the values from 'with'-chains with `${NAME}`.
+Please also keep in mind that not every event has a player as cause, so you might use something like
+`!execute as ${PLAYER} run ...`.
+
+After running a action the following variables will be updated or removed automatically, based on the command:
+ * `successCount` the commands' success count, if applicable. Usually > 0 on success, 0 otherwise.
+ * `queryResult` the commands' result count, if applicable.
+ * `affectedBlocks` the number of affected blocks, if applicable.
+ * `affectedEntities` the number of affected entities, if applicable.
+ * `affectedItems` the number of affected items, if applicable.
 
 ####Cancelling Events
 
@@ -78,7 +101,8 @@ You can also cancel cancellable events with the special action `cancel`.
 ## Plugin Support
 
 Event Command also supports [LuckPerms](https://luckperms.net/) events.
-For a list of LP Events, see the [LuckPerms SourceCode](https://github.com/lucko/LuckPerms/tree/master/api/src/main/java/net/luckperms/api/event) (make sure the classes extend LuckPermsEvent).
+For a list of LP Events, see the [LuckPerms SourceCode](https://github.com/lucko/LuckPerms/tree/master/api/src/main/java/net/luckperms/api/event)
+(make sure the classes extend LuckPermsEvent).
 
 ## Examples
 

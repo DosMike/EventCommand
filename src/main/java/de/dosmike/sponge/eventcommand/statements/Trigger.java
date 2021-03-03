@@ -4,6 +4,8 @@ import de.dosmike.sponge.eventcommand.*;
 import de.dosmike.sponge.eventcommand.exception.MissingDependencyException;
 import de.dosmike.sponge.eventcommand.statements.luckperms.LuckPermsTrigger;
 import de.dosmike.sponge.eventcommand.statements.sponge.SpongeTrigger;
+import org.spongepowered.api.Sponge;
+import org.spongepowered.api.event.SpongeEventFactory;
 
 import java.util.HashMap;
 import java.util.List;
@@ -28,7 +30,7 @@ public abstract class Trigger<EventType> {
 
     protected abstract <T extends EventType> void register(Class<T> eventClass);
 
-    protected void unregister() {
+    public void unregister() {
     }
 
     protected void run(EventType event) {
