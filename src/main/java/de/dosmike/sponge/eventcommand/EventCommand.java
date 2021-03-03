@@ -1,6 +1,8 @@
 package de.dosmike.sponge.eventcommand;
 
 import com.google.inject.Inject;
+import de.dosmike.sponge.eventcommand.exception.ECException;
+import de.dosmike.sponge.eventcommand.statements.Trigger;
 import org.slf4j.Logger;
 import org.spongepowered.api.Sponge;
 import org.spongepowered.api.config.ConfigDir;
@@ -20,11 +22,11 @@ import java.util.Arrays;
 import java.util.List;
 import java.util.stream.Collectors;
 
-@Plugin(id = "eventcommand", name = "Event Command", version = "1.1")
+@Plugin(id = "eventcommand", name = "Event Command", version = "1.2")
 public class EventCommand {
 
     private static EventCommand instance;
-    static EventCommand getInstance() { return EventCommand.instance; }
+    public static EventCommand getInstance() { return EventCommand.instance; }
 
     @Inject
     private Logger logger;
@@ -57,10 +59,24 @@ public class EventCommand {
 
     List<Trigger<?>> triggerList = new ArrayList<>();
 
+    public static int verbosity = 0;
+
+    public static boolean isVerboseLogging() { return verbosity>0; }
+
     public static void simplePrint(Throwable x) {
+        if (verbosity >= 2) {
+            x.printStackTrace();
+            return;
+        }
         String padding="";
         while (padding.length()<15) {
-            w("%s> %s: %s", padding, x.getClass().getSimpleName(), x.getMessage());
+            String msg = x.getMessage(), clz = x.getClass().getSimpleName();
+            if (x instanceof ECException)
+                w("%s> %s", padding, msg!=null?msg:clz);
+            else if (msg != null)
+                w("%s> %s: %s", padding, clz, msg);
+            else
+                w("%s> %s", padding, clz);
             x = x.getCause();
             if (x == null || x.equals(x.getCause())) break;
             padding+=" ";

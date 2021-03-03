@@ -1,5 +1,8 @@
 package de.dosmike.sponge.eventcommand;
 
+import de.dosmike.sponge.eventcommand.exception.ScriptParseException;
+import de.dosmike.sponge.eventcommand.statements.*;
+
 import java.io.BufferedReader;
 import java.io.IOException;
 import java.io.InputStreamReader;
@@ -9,6 +12,8 @@ import java.util.ArrayList;
 import java.util.LinkedList;
 import java.util.List;
 import java.util.Locale;
+import java.util.function.Predicate;
+import java.util.regex.Pattern;
 
 public class ECParser {
 
@@ -16,12 +21,15 @@ public class ECParser {
 		INVALID,
 		TRIGGER,
 		WITH_CHAIN,
+		MATHS,
+		FILTER,
 		ACTION
 	}
 
 	List<Trigger<?>> parsed = new LinkedList<>();
 	List<WithChain> variables = new ArrayList<>();
-	List<Action> actions = new ArrayList<>();
+	List<Computing> quickMaths = new ArrayList<>();
+	ActionGroup actions = null;
 	int lineNo = 0;
 	Path path;
 	LineType lastParsed = LineType.INVALID;
@@ -37,9 +45,18 @@ public class ECParser {
 			br = new BufferedReader(new InputStreamReader(Files.newInputStream(path)));
 			String line;
 
+			char globalIndent = 0;
 			while ((line = br.readLine()) != null) {
 				lineNo++;
-				line = line.trim();
+				char spaceChar=0,off=0;
+				while (off < line.length() && Character.isWhitespace(line.charAt(off))) {
+					if (globalIndent != 0 && line.charAt(off) != globalIndent) throw new ScriptParseException(lineNo, "Mixed indentation between lines is not supported");
+					else if (globalIndent == 0) globalIndent = line.charAt(off);
+					if (off == 0) spaceChar = line.charAt(off);
+					else if (line.charAt(off) != spaceChar) throw new ScriptParseException(lineNo, "Mixed indentation within line is not supported");
+					off++;
+				}
+				line = line.substring(off).trim();
 				if (line.startsWith("--") || line.isEmpty()) continue; //comments
 				switch (guessType(line)) {
 					case TRIGGER: {
@@ -51,15 +68,24 @@ public class ECParser {
 						parseWithChain(line);
 						break;
 					}
+					case MATHS: {
+						parseMaths(line);
+						break;
+					}
+					case FILTER: {
+						parseFilter(line, off);
+						break;
+					}
 					case ACTION: {
-						parseAction(line);
+						parseAction(line, off);
+						break;
 					}
 				}
 			}
 			closeTrigger();
 
 		} catch (Exception e) {
-			throw new IOException("Unable to load file \"" + path.toString() + "\"", e);
+			throw new ScriptParseException(lineNo, "Unable to load file \"" + path.toString() + "\"", e);
 		} finally {
 			try {
 				br.close();
@@ -73,25 +99,64 @@ public class ECParser {
 		return parsed;
 	}
 
-	private LineType guessType(String line) {
+	// asPredicate is (s)->matcher(s).find() - not (s)->matcher(s).matches() as expected
+	private static final Predicate<String> checkPatternWith = Pattern.compile("^with\\b").asPredicate();
+	private static final Predicate<String> checkPatternMaths = Pattern.compile("^let\\b").asPredicate();
+	private static final Predicate<String> checkPatternFor = Pattern.compile("^(?:for|otherwise)\\b").asPredicate();
+	private static final Predicate<String> checkPatternAction = Pattern.compile("^[!/][^\\s]").asPredicate();
+	private LineType guessType(String line) throws IOException {
 		LineType type;
 		if (line.charAt(0) == '@') {
 			type = LineType.TRIGGER;
-		} else if (line.toLowerCase(Locale.ROOT).startsWith("with")) {
+		} else if (checkPatternWith.test(line.toLowerCase(Locale.ROOT))) {
 			type = LineType.WITH_CHAIN;
-		} else {
+		} else if (checkPatternMaths.test(line.toLowerCase(Locale.ROOT))) {
+			type = LineType.MATHS;
+		} else if (checkPatternFor.test(line.toLowerCase(Locale.ROOT))) {
+			type = LineType.FILTER;
+		} else if (checkPatternAction.test(line.toLowerCase(Locale.ROOT))) {
 			type = LineType.ACTION;
+		} else {
+			//check for special keywords
+			if (line.equalsIgnoreCase("cancel")) type = LineType.ACTION;
+			else throw new ScriptParseException(lineNo, "Invalid Statement");
 		}
-		if (type == LineType.TRIGGER && lastParsed == LineType.TRIGGER) {
-			throw new IllegalStateException("Expected 'with'-chains or actions at line " + lineNo);
-		} else if (type == LineType.WITH_CHAIN) {
-			if (lastParsed == LineType.INVALID) {
-				throw new IllegalStateException("Expected event name at line " + lineNo);
-			} else if (lastParsed == LineType.ACTION) { //actions can be repeated or followed by new triggers, we're in another with chain!
-				throw new IllegalStateException("Expected action or event name at line " + lineNo);
+		// 1 @event
+		// 2  with
+		// 3  math
+		// 4  filter/action
+		// legal progression
+		// 1->2,4
+		// 2->2,3,4
+		// 3->3,4
+		// 4->1,4
+		// legal predecessors
+		// 1<-4
+		// 2<-1,2
+		// 3<-2,3
+		// 4<-1,2,3,4
+		if (lastParsed == LineType.INVALID && type != LineType.TRIGGER) {
+			throw new ScriptParseException(lineNo, "Expected event name");
+		} else if (type == LineType.TRIGGER) {
+			if (lastParsed == LineType.TRIGGER) { // 1 <- 1 -> 2,4
+				throw new ScriptParseException(lineNo, "Empty Event. Expected 'with'-chains, filters or actions; found event name");
+			} else if (lastParsed == LineType.WITH_CHAIN) { // 1 <- 2 -> 2,3,4
+				throw new ScriptParseException(lineNo, "No actions for event. Expected 'with'-chains, mathematics, filter or actions; found event name");
+			} else if (lastParsed == LineType.MATHS) { // 1 <- 3 -> 3,4
+				throw new ScriptParseException(lineNo, "No actions for event. Expected mathematics, filter or actions; found event name");
 			}
-		} else if (type == LineType.ACTION && lastParsed == LineType.INVALID) {
-			throw new IllegalStateException("Expected event name at line " + lineNo);
+		} else if (type == LineType.WITH_CHAIN) {
+			if (lastParsed == LineType.MATHS) { // 2 <- 3 -> 3,4
+				throw new ScriptParseException(lineNo, "'With'-chain after mathematics. Expected mathematics, filter or actions; found 'with'-chain");
+			} else if (lastParsed == LineType.ACTION || lastParsed == LineType.FILTER) { // 2 <- 4 -> 1,4
+				throw new ScriptParseException(lineNo, "'With'-chain after actions. Expected filter, actions or next event name; found 'with'-chain");
+			}
+		} else if (type == LineType.MATHS) {
+			if (lastParsed == LineType.TRIGGER) { // 3 <- 1 -> 2,4
+				throw new ScriptParseException(lineNo, "Mathematics before 'with'-chains. Expected 'with'-chain, filter or actions; found maths");
+			} else if (lastParsed == LineType.ACTION || lastParsed == LineType.FILTER) { // 3 <- 4 -> 1,4
+				throw new ScriptParseException(lineNo, "Mathematics after actions. Expected filter, actions or next event name; found maths");
+			}
 		}
 		return type;
 	}
@@ -106,28 +171,67 @@ public class ECParser {
 		lastParsed = LineType.WITH_CHAIN;
 	}
 
-	private void parseAction(String line) {
-		if (line.startsWith("!")) {
-			actions.add(new Action(line.substring(1).trim(), CommandSourceResolver.Factory.Server()));
+	private void parseMaths(String line) {
+		quickMaths.add(new Computing(line));
+		lastParsed = LineType.MATHS;
+	}
+
+	private void parseFilter(String line, int indent) throws IOException {
+		setActionGroup(indent);
+		Filtered f = new Filtered(line);
+		f.setParent(actions);
+		actions.add(f);
+		actions = f;
+	}
+
+	private void parseAction(String line, int indent) throws IOException {
+		setActionGroup(indent);
+		if (actions.previousSibling() instanceof Filtered) {
+			((Filtered) actions.previousSibling()).setLastCase(true);
+		}
+		if (line.equalsIgnoreCase("cancel")) {
+			actions.add(CancelEventAction.create(nextTrigger));
+		} else if (line.startsWith("!")) {
+			actions.add(new CommandAction(line.substring(1).trim(), CommandSourceResolver.Factory.Server()));
 		} else {
-			actions.add(new Action(line.trim(), CommandSourceResolver.Factory.Player()));
+			actions.add(new CommandAction(line.trim(), CommandSourceResolver.Factory.Player()));
 		}
 		lastParsed = LineType.ACTION;
 	}
 
+	private void setActionGroup(int indent) throws IOException {
+		if (actions == null) {
+			actions = new ActionGroup(indent);
+		} else {
+			if (actions.getDepth() == -1) { //sub-group was created, but it doesn't know it's depth yet
+				if (indent > actions.getParent().getDepth()) {
+					actions.setDepth(indent);
+				} else { //empty body aka stepping up from the Filtered without adding things(or depth)
+					actions.setDepth(Integer.MAX_VALUE); //so mock one in so we can ..
+					actions = actions.findParent(indent); //.. go to the requested indent level
+				}
+			} else if (indent > actions.getDepth()) { //arbitrarily stepping in does not really make sense
+				//actions = new ActionGroup(indent, actions);
+				throw new ScriptParseException(lineNo, "Cannot arbitrarily increase indentation, preceding filter is required");
+			} else if (indent < actions.getDepth()) {
+				actions = actions.findParent(indent);
+			}
+		}
+	}
+
 	private void closeTrigger() throws IOException {
 		if (nextTrigger != null) {
-			if (actions.isEmpty()) {
-				throw new IllegalStateException("Trigger \"" + nextTrigger + "\" does not specify any actions before line " + lineNo);
+			if (actions == null) {
+				throw new ScriptParseException(lineNo, "Trigger preceding \"" + nextTrigger + "\" does not specify any actions");
 			}
 			try {
-				parsed.add(TriggerFactory.get().create(nextTrigger, variables, actions));
+				parsed.add(Trigger.create(nextTrigger, variables, quickMaths, actions.getRoot()));
 			} catch (Exception e) {
-				throw new IOException("Unable to create trigger \"" + nextTrigger + "\" before line " + lineNo, e);
+				throw new ScriptParseException(lineNo, "Unable to create trigger \"" + nextTrigger + '"', e);
 			}
 		}
 		variables.clear();
-		actions.clear();
+		actions = null;
 	}
 
 }
