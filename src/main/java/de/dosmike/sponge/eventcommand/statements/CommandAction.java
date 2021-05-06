@@ -1,28 +1,24 @@
 package de.dosmike.sponge.eventcommand.statements;
 
-import com.sun.corba.se.impl.orbutil.concurrent.Sync;
 import de.dosmike.sponge.eventcommand.EventCommand;
+import de.dosmike.sponge.eventcommand.Patterns;
 import de.dosmike.sponge.eventcommand.VariableContext;
 import org.spongepowered.api.Sponge;
 import org.spongepowered.api.command.CommandResult;
 import org.spongepowered.api.command.CommandSource;
-import org.spongepowered.api.scheduler.Task;
 
-import java.util.concurrent.CompletableFuture;
 import java.util.regex.Matcher;
-import java.util.regex.Pattern;
 
 public class CommandAction implements Action {
 
     String command;
-    Pattern pat = Pattern.compile("(\\$\\{\\p{L}+})");
     CommandSourceResolver resolver;
 
     public CommandAction(String action, CommandSourceResolver resolver) {
         this.resolver = resolver;
 
         command = action.charAt(0) == '/' ? action.substring(1) : action;
-        Matcher matcher = pat.matcher(command);
+        Matcher matcher = Patterns.wholeVariable.matcher(command);
         StringBuffer sb = new StringBuffer();
         int lastEnd = 0;
         while (matcher.find()) {

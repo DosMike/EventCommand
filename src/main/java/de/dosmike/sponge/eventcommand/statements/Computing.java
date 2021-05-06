@@ -1,6 +1,7 @@
 package de.dosmike.sponge.eventcommand.statements;
 
 import de.dosmike.sponge.eventcommand.MathEval;
+import de.dosmike.sponge.eventcommand.Patterns;
 import de.dosmike.sponge.eventcommand.Utils;
 import de.dosmike.sponge.eventcommand.VariableContext;
 import de.dosmike.sponge.eventcommand.exception.StatementParseException;
@@ -14,7 +15,6 @@ public class Computing {
 	static final MathEval maths = new MathEval();
 	String mathExpr;
 	String variableTarget;
-	private static final Predicate<String> onlyLetters = Pattern.compile("^\\p{L}+$").asPredicate();
 
 	public Computing(String line) {
 
@@ -26,7 +26,7 @@ public class Computing {
 		if (idx < 0) throw new StatementParseException("Unexpected end of line, expected assignment operator");
 
 		variableTarget = line.substring(0,idx);
-		if (!onlyLetters.test(variableTarget)) throw new StatementParseException("Variables names may only contain letters");
+		if (!Patterns.allVariableCheck.test(variableTarget)) throw new StatementParseException("Variables names may only contain letters");
 
 		line = line.substring(idx).trim();
 

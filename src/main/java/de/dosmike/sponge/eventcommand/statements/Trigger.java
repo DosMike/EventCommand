@@ -41,7 +41,8 @@ public abstract class Trigger<EventType> {
             VariableContext values = new VariableContext();
             for (Map.Entry<String, WithChain> e : variables.entrySet()) {
                 String k = e.getKey().toLowerCase();
-                Object v = e.getValue().resolve(event);
+                WithChain withChain = e.getValue();
+                Object v = withChain.resolve( withChain.expectVariablesInput() ? values : event );
                 values.put(k, v);
                 if (EventCommand.isVerboseLogging())
                     EventCommand.l("(%d) Resolved %s to %s", hc, k, v);

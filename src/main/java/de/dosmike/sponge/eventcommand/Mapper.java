@@ -14,14 +14,15 @@ import java.lang.reflect.Field;
 import java.lang.reflect.Method;
 import java.lang.reflect.Modifier;
 import java.util.*;
+import java.util.regex.Matcher;
 
 public abstract class Mapper {
 
     String key;
     public abstract Optional<?> map(Optional<?> in);
 
-	static class Getter extends Mapper {
-		public Getter(String method) {
+	public static class Getter extends Mapper {
+		Getter(String method) {
 			key = method;
 		}
 
@@ -72,9 +73,9 @@ public abstract class Mapper {
         }
     }
 
-    static class Keys extends Mapper {
+	public static class Keys extends Mapper {
         String id;
-        public Keys(String keyName) {
+        Keys(String keyName) {
             key = keyName;
             try {
                 //try to resolve the key name against the Keys catalog
@@ -111,9 +112,9 @@ public abstract class Mapper {
         }
     }
 
-    static class Cause extends Mapper {
+	public static class Cause extends Mapper {
         Class<?> clz;
-        public Cause(String keyName) {
+        Cause(String keyName) {
             key = keyName;
             clz = Utils.tryLoad(keyName).orElseThrow(()->new StatementParseException("No class found for \""+key+"\""));
         }
@@ -134,9 +135,9 @@ public abstract class Mapper {
         }
     }
 
-    static class Index extends Mapper {
+	public static class Index extends Mapper {
         int i;
-        public Index(String index) {
+        Index(String index) {
             key = index;
             i = Integer.parseInt(key)-1;
             if (i<0) throw new StatementParseException("Index has to be positive (non-null)");
@@ -165,12 +166,38 @@ public abstract class Mapper {
         }
     }
 
+    public static class Variable extends Mapper {
+		String varname;
+		Variable(String varname) {
+			this.varname = varname.toLowerCase(Locale.ROOT);
+		}
+
+	    @Override
+	    public Optional<?> map(Optional<?> in) {
+		    Object vc = in.orElse(null);
+		    if (vc instanceof VariableContext) {
+			    return Utils.makeOptional(((VariableContext)vc).require(varname));
+		    } else {
+			    throw new ScriptExecutionException("Variables are only valid at the start of a 'with'-chain");
+		    }
+	    }
+
+	    @Override
+	    public String toString() {
+		    return "${" + varname + '}';
+	    }
+    }
+
     public static Mapper fromString(String def) {
-        if (def.isEmpty() || def.equals("#") || def.equals("&")) throw new StatementParseException("Definition required");
+        if (def.isEmpty() || def.equals("#") || def.equals("&") || (def.charAt(0)=='$' && def.length()<3)) throw new StatementParseException("Definition required");
         if (def.charAt(0)=='#') {
             return new Keys(def.substring(1).toUpperCase());
         } else if (def.charAt(0)=='&') {
             return new Cause(def.substring(1));
+        } else if (def.charAt(0)=='$') {
+        	Matcher vname = Patterns.startVariable.matcher(def);
+        	if (!vname.matches()) throw new StatementParseException("Invalid variable definition \""+def+"\"");
+        	return new Variable(vname.group(1));
         } else if (def.matches("^[0-9]+$")) {
             return new Index(def);
         } else {
